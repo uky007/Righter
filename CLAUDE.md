@@ -1,0 +1,262 @@
+# Righter - 開発引き継ぎドキュメント
+
+Rust製Vimライクターミナルテキストエディタ。rust-analyzer統合による型推論・診断・補完をサポート。
+
+## ビルドと実行
+
+```bash
+# ビルド（Rust edition 2024 / nightly必要）
+cargo build
+
+# 実行
+cargo run -- <filepath>
+
+# 例: 自身のソースコードを開く
+cargo build && cargo run -- src/editor/mod.rs
+```
+
+## アーキテクチャ概要
+
+```
+main.rs                        # エントリポイント。ターミナルセットアップ → App::run()
+  app.rs (App)                 # イベントループ。キー入力 / LSPメッセージ / 描画tick(60fps) を tokio::select!で多重化
+    editor/mod.rs (Editor)     # 全エディタ状態。カーソル、モード、バッファ、レジスタ、マクロ等
+      editor/document.rs       # ropey::Rope ラッパー。ファイルI/O、テキスト変更操作
+      editor/selection.rs      # Position { row, col } 構造体
+      editor/view.rs           # ビューポート(スクロールオフセット、表示領域サイズ)
+      editor/history.rs        # undo/redo スナップショットベース
+    input/mod.rs               # execute() : Command → Editor メソッドのディスパッチ + .repeat追跡
+      input/command.rs         # Command enum (100+バリアント) + Motion enum
+      input/mode.rs            # Mode enum (Normal/Insert/Visual/VisualLine/Command/Search)
+      input/keymap.rs          # キー→Command変換。モード別マッピング + pending key処理
+    lsp/mod.rs (LspClient)     # rust-analyzer と JSON-RPC通信。リクエスト/レスポンス/通知の処理
+      lsp/transport.rs         # Content-Length ヘッダベースの読み書き
+    ui/mod.rs                  # render()。全UIコンポーネントをレイヤ描画
+      ui/editor_view.rs        # メインエディタ領域（行番号、構文ハイライト、診断表示、カーソル）
+      ui/status_line.rs        # モード表示 + カーソル位置 + ファイル名
+      ui/command_line.rs       # `:` コマンド / `/` 検索入力
+      ui/completion.rs         # LSP補完ポップアップ
+      ui/hover.rs              # LSPホバー情報ポップアップ
+      ui/references.rs         # LSP参照一覧ポップアップ
+      ui/code_actions.rs       # LSP Code Actionsポップアップ
+      ui/diagnostics.rs        # 診断一覧ポップアップ
+      ui/file_finder.rs        # ファジーファイルファインダー
+      ui/tab_bar.rs            # マルチバッファのタブバー
+    buffer/mod.rs              # 行の表示幅計算、word文字判定ユーティリティ
+    config.rs                  # Config { tab_width, scroll_off }
+    highlight/mod.rs           # tree-sitter ベースの構文ハイライト
+    highlight/theme.rs         # トークン→スタイルのマッピング
+```
+
+## 主要な設計パターン
+
+### コマンドディスパッチ
+
+キー入力からエディタ操作までの流れ:
+
+```
+crossterm::KeyEvent
+  → keymap::map_key()     # Mode別にCommandを決定。pending_keysで複数キー操作を処理
+  → input::execute()      # CommandをEditorメソッドにディスパッチ
+  → Editor::method()      # 実際のテキスト操作やモード変更を実行
+```
+
+### pending_keys (複数キー操作)
+
+`d`, `c`, `y`, `g`, `f`, `]`, `[` 等の1キー目をpending_keysに保存し、2キー目で確定:
+- `dd` → DeleteLine, `dw` → DeleteMotion(WordForward)
+- `gd` → GotoDefinition, `ga` → CodeAction, `gE` → DiagnosticList
+- `]d` → DiagnosticNext, `[d` → DiagnosticPrev
+
+### DeferredAction (非同期操作)
+
+同期的にCommandをディスパッチした後、非同期処理が必要な場合はDeferredActionを返す:
+- `PlayMacro(char)`, `FormatDocument`, `OpenFile(String)`, `ShellCommand(String)` 等
+- `app.rs`の`handle_deferred()`が処理
+
+### LSPリクエスト/レスポンスパターン
+
+1. キーマップが`Command::GotoDefinition`等を生成
+2. `input::execute()`では空処理（`{}`）
+3. `app.rs`のイベントループでフラグチェック → `request_xxx().await`
+4. `pending_xxx_id`にリクエストIDを保存
+5. `handle_lsp_message()`でID一致時にレスポンスを処理
+
+### ポップアップUIパターン
+
+全ポップアップは同一パターン:
+- `Editor`に`showing_xxx: bool`, `xxx_index: usize`, データ`Vec<T>`
+- `keymap.rs`の`map_normal`冒頭で`showing_xxx`チェック → j/k/Enter/Escをインターセプト
+- `ui/xxx.rs`で`Widget` traitを実装、`showing_xxx == false`なら即return
+- `ui/mod.rs`の`render()`でEditorView上にオーバーレイ描画
+
+## キーバインド一覧
+
+### Normal Mode
+
+| キー | コマンド | 説明 |
+|------|---------|------|
+| `h/j/k/l` | MoveLeft/Down/Up/Right | カーソル移動 |
+| `w/b/e` | MoveWordForward/Backward/End | word単位移動 |
+| `W/B/E` | MoveWORDForward/Backward/End | WORD単位移動（空白区切り） |
+| `0/$` | MoveLineStart/End | 行頭/行末 |
+| `^` | MoveFirstNonBlank | 最初の非空白文字 |
+| `{/}` | MoveParagraph | 段落移動（空行区切り） |
+| `gg/G` | GotoTop/Bottom | ファイル先頭/末尾 |
+| `H/M/L` | ViewportHigh/Middle/Low | 画面上端/中央/下端 |
+| `%` | MatchBracket | 対応括弧ジャンプ |
+| `f/F/t/T` + char | Find/TillChar | 行内文字検索 |
+| `i/a/A/I/o/O` | Insert系 | Insertモード開始 |
+| `d` + motion | DeleteMotion | モーション範囲削除 |
+| `c` + motion | ChangeMotion | モーション範囲変更 |
+| `y` + motion / `yy` | YankMotion/Line | ヤンク |
+| `p/P` | PasteAfter/Before | ペースト |
+| `x` | DeleteCharForward | 文字削除 |
+| `dd` | DeleteLine | 行削除 |
+| `D/C` | Delete/Change to EOL | 行末まで削除/変更 |
+| `J` | JoinLines | 行結合 |
+| `r` + char | ReplaceChar | 文字置換 |
+| `u` / `Ctrl-R` | Undo/Redo | 元に戻す/やり直し |
+| `.` | RepeatLastChange | 最後の変更を繰り返し |
+| `~` | ToggleCaseChar | 大文字小文字トグル |
+| `gu/gU/g~` + motion | CaseChange | ケース変更 |
+| `Ctrl-A/X` | Increment/Decrement | 数値増減 |
+| `v/V` | EnterVisual/VisualLine | Visualモード |
+| `:/` | CommandMode/SearchMode | コマンド/検索（正規表現対応、インクリメンタル検索） |
+| `n/N` | SearchNext/Prev | 検索次/前 |
+| `*/＃` | SearchWordForward/Backward | カーソル下の単語検索（`\b`ワード境界付き） |
+| `Ctrl-D/U` | HalfPageDown/Up | 半ページスクロール |
+| `Ctrl-F/B` | FullPageDown/Up | 全ページスクロール |
+| `zz/zt/zb` | ScrollCenter/Top/Bottom | スクロール位置調整 |
+| `>>/<<` | IndentLine/DedentLine | インデント |
+| `Ctrl-P` | OpenFileFinder | ファイルファインダー |
+| `Ctrl-O/I` | JumpBack/Forward | ジャンプリスト |
+| `K` | Hover | LSPホバー情報 |
+| `gd` | GotoDefinition | 定義ジャンプ |
+| `gr` | FindReferences | 参照検索 |
+| `ga` | CodeAction | コードアクション（quick fix） |
+| `gE` | DiagnosticList | 診断一覧ポップアップ |
+| `gt/gT` | NextBuffer/PrevBuffer | バッファ切替 |
+| `]d/[d` | DiagnosticNext/Prev | 次/前の診断へジャンプ |
+| `q` + char | StartMacro | マクロ記録開始 |
+| `q`（記録中） | StopMacro | マクロ記録停止 |
+| `@` + char | PlayMacro | マクロ再生 |
+| `@@` | PlayLastMacro | 最後のマクロ再生 |
+| `"` + char | SelectRegister | レジスタ選択 |
+| `Ctrl-C` | Quit | 終了 |
+
+### コマンドモード (`:`)
+
+| コマンド | 説明 |
+|---------|------|
+| `:w` | 保存 |
+| `:q` / `:q!` | 終了 / 強制終了 |
+| `:wq` | 保存して終了 |
+| `:e <path>` | ファイルを開く |
+| `:rename <name>` | LSPリネーム |
+| `:format` | LSPフォーマット |
+| `:<number>` | 指定行にジャンプ |
+| `:s/old/new/[g][i]` | 現在行の置換（正規表現対応、`g`:全置換、`i`:大文字小文字無視） |
+| `:%s/old/new/[g][i]` | 全行の置換（正規表現対応、キャプチャグループ `$1`, `$2` 対応） |
+| `:!<command>` | シェルコマンド実行 |
+| `:bn` / `:bp` | 次/前バッファ |
+
+## 依存クレート
+
+| クレート | 用途 |
+|---------|------|
+| `ratatui 0.29` | TUIフレームワーク |
+| `crossterm 0.28` | ターミナルI/O + イベント |
+| `tokio 1` (full) | 非同期ランタイム |
+| `ropey 1.6` | Ropeデータ構造（テキストバッファ） |
+| `tree-sitter 0.24` | インクリメンタルパーサー |
+| `tree-sitter-rust 0.23` | Rust文法 |
+| `serde_json 1` | LSP JSON-RPC |
+| `anyhow 1` | エラーハンドリング |
+| `unicode-width 0.2` | Unicode文字幅 |
+| `regex 1` | 正規表現（検索・置換） |
+
+## 検索と置換
+
+### 検索 (`/`)
+- **正規表現対応**: `/fn\s+\w+` のようなパターンが使用可能
+- **スマートケース**: クエリが全小文字なら大文字小文字を無視、大文字が含まれるとcase-sensitive
+- **`\c` / `\C` サフィックス**: 明示的にcase-insensitive (`\c`) / case-sensitive (`\C`) を指定
+- **インクリメンタル検索**: 入力中にリアルタイムでマッチ位置にカーソルジャンプ
+- **Escで復元**: 検索キャンセル時にカーソルが元の位置に戻る
+- **リテラルフォールバック**: 不正な正規表現はリテラル文字列として検索
+
+### 置換 (`:s///`, `:%s///`)
+- **正規表現対応**: `:s/fn (\w+)/fn renamed_$1/g` のようなキャプチャグループ対応
+- **フラグ**: `g` (行内全置換), `i` (大文字小文字無視)
+- **例**: `:%s/foo/bar/gi` — 全行でfoo→barをcase-insensitive全置換
+
+## LSP統合 (rust-analyzer)
+
+サポート機能:
+- **補完** (`Ctrl-Space` / 自動): `textDocument/completion`
+- **定義ジャンプ** (`gd`): `textDocument/definition`（ファイル跨ぎ対応）
+- **ホバー** (`K`): `textDocument/hover`
+- **参照検索** (`gr`): `textDocument/references`
+- **リネーム** (`:rename`): `textDocument/rename`
+- **フォーマット** (`:format`): `textDocument/formatting`
+- **診断表示**: `textDocument/publishDiagnostics`（リアルタイム通知）
+- **Code Actions** (`ga`): `textDocument/codeAction`（quick fix適用）
+
+### 診断の表示
+
+- エラー行: 行番号が赤色、ガターに `●`、行背景が暗赤
+- 警告行: 行番号が黄色、ガターに `▲`、行背景が暗黄
+- `]d`/`[d` で診断間をジャンプ（ステータスバーにメッセージ表示）
+- `gE` で全診断の一覧ポップアップ表示 → `j/k` で選択、`Enter` でジャンプ
+
+## 新機能の追加パターン
+
+### 新しいコマンドの追加
+
+1. `input/command.rs` の `Command` enum にバリアント追加
+2. `input/keymap.rs` にキーバインド追加（対応するモードの関数を編集）
+3. `editor/mod.rs` に実装メソッド追加
+4. `input/mod.rs` の `execute()` にディスパッチ追加
+5. テキスト変更を伴う場合は `track_change()` にも追加
+
+### 新しいLSP機能の追加
+
+1. `lsp/mod.rs` にリクエストメソッド + レスポンスパーサー追加
+2. `input/command.rs` にCommand追加
+3. `app.rs` のイベントループでコマンドフラグをチェック → `request_xxx()` 呼び出し
+4. `app.rs` の `handle_lsp_message()` に `pending_xxx_id` マッチング追加
+5. 必要に応じてEditorにフィールド追加
+
+### 新しいポップアップUIの追加
+
+1. `editor/mod.rs` に状態フィールド追加 (`showing_xxx`, `xxx_index`, データ)
+2. `ui/xxx.rs` に `Widget` trait実装を新規作成（`references.rs` をテンプレートに）
+3. `ui/mod.rs` にモジュール登録 + `render()` で描画呼び出し
+4. `keymap.rs` の `map_normal` 冒頭に `showing_xxx` のキーインターセプト追加
+5. `editor/mod.rs` の `dismiss_popup()` にクリア処理追加
+
+## 現在の状態と既知の制限
+
+### ビルド状態
+- `cargo build` は成功（警告のみ、エラーなし）
+
+### 既知の警告
+- `editor/mod.rs`: `negative` 変数の未読（数値パース処理内）
+- `config.rs`: `tab_width` フィールドの未使用
+- いくつかの構造体フィールドの未使用警告（LSP型の一部フィールド）
+
+### 制限事項
+- Rust のみ対応（tree-sitter-rust, rust-analyzer固定）
+- 単一ウィンドウ（split未対応）
+- クリップボードは macOS (`pbcopy`/`pbpaste`) のみ
+- LSPのWorkspaceEdit適用は現在のファイルのみ（マルチファイル編集は未対応）
+- コマンドモードのコマンドは限定的
+
+### 改善候補
+- 他言語対応（tree-sitter-xxx / language server 設定可能化）
+- ウィンドウ分割
+- 設定ファイル（`.righterrc` 等）
+- LSP workspace/symbol 検索
+- 行折り返し表示
+- マルチカーソル
