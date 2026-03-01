@@ -208,6 +208,10 @@ pub enum Command {
     CodeActionAccept,
     CodeActionDismiss,
 
+    // Document-line movement (gj/gk in wrap mode)
+    MoveDocumentLineDown,
+    MoveDocumentLineUp,
+
     // Window split
     SplitHorizontal,
     SplitVertical,

@@ -363,6 +363,8 @@ fn handle_pending(editor: &mut Editor, key: KeyEvent) -> Option<Command> {
             'E' => Some(Command::DiagnosticList),
             't' => Some(Command::NextBuffer),
             'T' => Some(Command::PrevBuffer),
+            'j' => Some(Command::MoveDocumentLineDown),
+            'k' => Some(Command::MoveDocumentLineUp),
             // Case change: gu/gU/g~ + motion
             'u' | 'U' | '~' => {
                 editor.pending_keys.push('g');

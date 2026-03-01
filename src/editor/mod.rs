@@ -3,6 +3,7 @@ pub mod history;
 pub mod pane;
 pub mod selection;
 pub mod view;
+pub mod wrap;
 
 use ratatui::style::Style;
 
@@ -284,8 +285,35 @@ impl Editor {
     }
 
     pub fn scroll(&mut self) {
-        self.view
-            .ensure_cursor_visible(&self.cursor, self.config.scroll_off);
+        if self.config.wrap {
+            let gutter_w = self.gutter_width();
+            let text_width = self.view.width.saturating_sub(gutter_w);
+            self.view.ensure_cursor_visible_wrapped(
+                &self.cursor,
+                self.config.scroll_off,
+                &self.document.rope,
+                text_width,
+            );
+        } else {
+            self.view
+                .ensure_cursor_visible(&self.cursor, self.config.scroll_off);
+        }
+    }
+
+    /// Gutter width (line numbers + padding). Same logic as EditorView::gutter_width().
+    pub fn gutter_width(&self) -> u16 {
+        let lines = self.document.line_count();
+        let digits = if lines == 0 {
+            1
+        } else {
+            (lines as f64).log10().floor() as u16 + 1
+        };
+        digits + 2
+    }
+
+    /// Text area width (total width minus gutter).
+    fn text_width(&self) -> u16 {
+        self.view.width.saturating_sub(self.gutter_width())
     }
 
     /// Save a snapshot for undo before a destructive operation.
@@ -330,6 +358,83 @@ impl Editor {
     }
 
     pub fn move_down(&mut self) {
+        if self.config.wrap {
+            self.move_down_wrapped();
+        } else {
+            let max_row = self.document.line_count().saturating_sub(1);
+            if self.cursor.row < max_row {
+                self.cursor.row += 1;
+            }
+            self.clamp_cursor();
+        }
+    }
+
+    pub fn move_up(&mut self) {
+        if self.config.wrap {
+            self.move_up_wrapped();
+        } else {
+            if self.cursor.row > 0 {
+                self.cursor.row -= 1;
+            }
+            self.clamp_cursor();
+        }
+    }
+
+    /// Move down by one screen line in wrap mode.
+    fn move_down_wrapped(&mut self) {
+        let text_width = self.text_width();
+        if text_width == 0 {
+            return;
+        }
+        let line = self.document.rope.line(self.cursor.row);
+        let wc = wrap::wrap_count(line, text_width);
+        let (seg, col_in_seg) = wrap::char_to_wrap_pos(line, self.cursor.col, text_width);
+
+        if seg + 1 < wc {
+            // Move to next segment within same line
+            self.cursor.col =
+                wrap::wrap_pos_to_char(line, seg + 1, col_in_seg, text_width);
+        } else {
+            // Move to next document line, segment 0
+            let max_row = self.document.line_count().saturating_sub(1);
+            if self.cursor.row < max_row {
+                self.cursor.row += 1;
+                let next_line = self.document.rope.line(self.cursor.row);
+                self.cursor.col =
+                    wrap::wrap_pos_to_char(next_line, 0, col_in_seg, text_width);
+            }
+        }
+        self.clamp_cursor();
+    }
+
+    /// Move up by one screen line in wrap mode.
+    fn move_up_wrapped(&mut self) {
+        let text_width = self.text_width();
+        if text_width == 0 {
+            return;
+        }
+        let line = self.document.rope.line(self.cursor.row);
+        let (seg, col_in_seg) = wrap::char_to_wrap_pos(line, self.cursor.col, text_width);
+
+        if seg > 0 {
+            // Move to previous segment within same line
+            self.cursor.col =
+                wrap::wrap_pos_to_char(line, seg - 1, col_in_seg, text_width);
+        } else {
+            // Move to last segment of previous document line
+            if self.cursor.row > 0 {
+                self.cursor.row -= 1;
+                let prev_line = self.document.rope.line(self.cursor.row);
+                let prev_wc = wrap::wrap_count(prev_line, text_width);
+                self.cursor.col =
+                    wrap::wrap_pos_to_char(prev_line, prev_wc - 1, col_in_seg, text_width);
+            }
+        }
+        self.clamp_cursor();
+    }
+
+    /// Move down by one document line (gj), ignoring wrap.
+    pub fn move_document_line_down(&mut self) {
         let max_row = self.document.line_count().saturating_sub(1);
         if self.cursor.row < max_row {
             self.cursor.row += 1;
@@ -337,7 +442,8 @@ impl Editor {
         self.clamp_cursor();
     }
 
-    pub fn move_up(&mut self) {
+    /// Move up by one document line (gk), ignoring wrap.
+    pub fn move_document_line_up(&mut self) {
         if self.cursor.row > 0 {
             self.cursor.row -= 1;
         }
@@ -2426,38 +2532,137 @@ impl Editor {
     // --- Phase 9: Viewport navigation ---
 
     pub fn viewport_high(&mut self) {
-        self.cursor.row = self.view.offset_row + self.config.scroll_off;
+        if self.config.wrap {
+            let text_width = self.text_width();
+            let map = wrap::build_screen_map(
+                &self.document.rope,
+                self.view.offset_row,
+                self.view.offset_wrap,
+                text_width,
+                self.view.height,
+            );
+            let target = self.config.scroll_off.min(map.len().saturating_sub(1));
+            if let Some(seg) = map.get(target) {
+                self.cursor.row = seg.doc_row;
+                self.cursor.col = seg.char_start;
+            }
+        } else {
+            self.cursor.row = self.view.offset_row + self.config.scroll_off;
+        }
         self.clamp_cursor();
     }
 
     pub fn viewport_middle(&mut self) {
-        self.cursor.row = self.view.offset_row + (self.view.height as usize) / 2;
+        if self.config.wrap {
+            let text_width = self.text_width();
+            let map = wrap::build_screen_map(
+                &self.document.rope,
+                self.view.offset_row,
+                self.view.offset_wrap,
+                text_width,
+                self.view.height,
+            );
+            let target = map.len() / 2;
+            if let Some(seg) = map.get(target) {
+                self.cursor.row = seg.doc_row;
+                self.cursor.col = seg.char_start;
+            }
+        } else {
+            self.cursor.row = self.view.offset_row + (self.view.height as usize) / 2;
+        }
         self.clamp_cursor();
     }
 
     pub fn viewport_low(&mut self) {
-        self.cursor.row = self.view.offset_row
-            + (self.view.height as usize).saturating_sub(1)
-            - self.config.scroll_off;
+        if self.config.wrap {
+            let text_width = self.text_width();
+            let map = wrap::build_screen_map(
+                &self.document.rope,
+                self.view.offset_row,
+                self.view.offset_wrap,
+                text_width,
+                self.view.height,
+            );
+            let target = map.len().saturating_sub(1).saturating_sub(self.config.scroll_off);
+            if let Some(seg) = map.get(target) {
+                self.cursor.row = seg.doc_row;
+                self.cursor.col = seg.char_start;
+            }
+        } else {
+            self.cursor.row = self.view.offset_row
+                + (self.view.height as usize).saturating_sub(1)
+                - self.config.scroll_off;
+        }
         self.clamp_cursor();
     }
 
     // --- Phase 9: Scroll positioning ---
 
     pub fn scroll_center(&mut self) {
-        let half = (self.view.height as usize) / 2;
-        self.view.offset_row = self.cursor.row.saturating_sub(half);
+        if self.config.wrap {
+            let text_width = self.text_width();
+            let half = (self.view.height as usize) / 2;
+            self.scroll_to_cursor_at_screen_row(half, text_width);
+        } else {
+            let half = (self.view.height as usize) / 2;
+            self.view.offset_row = self.cursor.row.saturating_sub(half);
+        }
     }
 
     pub fn scroll_top(&mut self) {
-        self.view.offset_row = self.cursor.row;
+        if self.config.wrap {
+            let text_width = self.text_width();
+            self.scroll_to_cursor_at_screen_row(0, text_width);
+        } else {
+            self.view.offset_row = self.cursor.row;
+        }
     }
 
     pub fn scroll_bottom(&mut self) {
-        self.view.offset_row = self
-            .cursor
-            .row
-            .saturating_sub(self.view.height as usize - 1);
+        if self.config.wrap {
+            let text_width = self.text_width();
+            let target = (self.view.height as usize).saturating_sub(1);
+            self.scroll_to_cursor_at_screen_row(target, text_width);
+        } else {
+            self.view.offset_row = self
+                .cursor
+                .row
+                .saturating_sub(self.view.height as usize - 1);
+        }
+    }
+
+    /// Position viewport so cursor appears at the given screen row (wrap-aware).
+    fn scroll_to_cursor_at_screen_row(&mut self, target_screen_row: usize, text_width: u16) {
+        if text_width == 0 {
+            return;
+        }
+        let line = self.document.rope.line(self.cursor.row);
+        let (cursor_seg, _) = wrap::char_to_wrap_pos(line, self.cursor.col, text_width);
+
+        // Go backwards from cursor by target_screen_row screen lines
+        let mut row = self.cursor.row;
+        let mut seg = cursor_seg;
+        let mut to_go = target_screen_row;
+
+        while to_go > 0 {
+            if seg >= to_go {
+                seg -= to_go;
+                to_go = 0;
+            } else {
+                to_go -= seg + 1;
+                if row > 0 {
+                    row -= 1;
+                    let prev_line = self.document.rope.line(row);
+                    seg = wrap::wrap_count(prev_line, text_width) - 1;
+                } else {
+                    seg = 0;
+                    to_go = 0;
+                }
+            }
+        }
+
+        self.view.offset_row = row;
+        self.view.offset_wrap = seg;
     }
 
     // --- Phase 9: Multi-buffer ---
@@ -2929,28 +3134,115 @@ impl Editor {
     }
 
     pub fn half_page_down(&mut self) {
-        let half = (self.view.height as usize) / 2;
-        let max_row = self.document.line_count().saturating_sub(1);
-        self.cursor.row = (self.cursor.row + half).min(max_row);
-        self.clamp_cursor();
+        if self.config.wrap {
+            self.move_screen_lines_down((self.view.height as usize) / 2);
+        } else {
+            let half = (self.view.height as usize) / 2;
+            let max_row = self.document.line_count().saturating_sub(1);
+            self.cursor.row = (self.cursor.row + half).min(max_row);
+            self.clamp_cursor();
+        }
     }
 
     pub fn half_page_up(&mut self) {
-        let half = (self.view.height as usize) / 2;
-        self.cursor.row = self.cursor.row.saturating_sub(half);
-        self.clamp_cursor();
+        if self.config.wrap {
+            self.move_screen_lines_up((self.view.height as usize) / 2);
+        } else {
+            let half = (self.view.height as usize) / 2;
+            self.cursor.row = self.cursor.row.saturating_sub(half);
+            self.clamp_cursor();
+        }
     }
 
     pub fn full_page_down(&mut self) {
-        let page = self.view.height as usize;
-        let max_row = self.document.line_count().saturating_sub(1);
-        self.cursor.row = (self.cursor.row + page).min(max_row);
-        self.clamp_cursor();
+        if self.config.wrap {
+            self.move_screen_lines_down(self.view.height as usize);
+        } else {
+            let page = self.view.height as usize;
+            let max_row = self.document.line_count().saturating_sub(1);
+            self.cursor.row = (self.cursor.row + page).min(max_row);
+            self.clamp_cursor();
+        }
     }
 
     pub fn full_page_up(&mut self) {
-        let page = self.view.height as usize;
-        self.cursor.row = self.cursor.row.saturating_sub(page);
+        if self.config.wrap {
+            self.move_screen_lines_up(self.view.height as usize);
+        } else {
+            let page = self.view.height as usize;
+            self.cursor.row = self.cursor.row.saturating_sub(page);
+            self.clamp_cursor();
+        }
+    }
+
+    /// Move cursor down by `n` screen lines (wrap-aware).
+    fn move_screen_lines_down(&mut self, n: usize) {
+        let text_width = self.text_width();
+        if text_width == 0 {
+            return;
+        }
+        let line = self.document.rope.line(self.cursor.row);
+        let (mut seg, col_in_seg) = wrap::char_to_wrap_pos(line, self.cursor.col, text_width);
+        let mut row = self.cursor.row;
+        let max_row = self.document.line_count().saturating_sub(1);
+        let mut remaining = n;
+
+        while remaining > 0 {
+            let cur_line = self.document.rope.line(row);
+            let wc = wrap::wrap_count(cur_line, text_width);
+            let segs_avail = wc - seg - 1;
+            if segs_avail >= remaining {
+                seg += remaining;
+                remaining = 0;
+            } else {
+                remaining -= segs_avail + 1;
+                if row < max_row {
+                    row += 1;
+                    seg = 0;
+                } else {
+                    seg = wc - 1;
+                    remaining = 0;
+                }
+            }
+        }
+
+        self.cursor.row = row;
+        let target_line = self.document.rope.line(row);
+        self.cursor.col = wrap::wrap_pos_to_char(target_line, seg, col_in_seg, text_width);
+        self.clamp_cursor();
+    }
+
+    /// Move cursor up by `n` screen lines (wrap-aware).
+    fn move_screen_lines_up(&mut self, n: usize) {
+        let text_width = self.text_width();
+        if text_width == 0 {
+            return;
+        }
+        let line = self.document.rope.line(self.cursor.row);
+        let (mut seg, col_in_seg) = wrap::char_to_wrap_pos(line, self.cursor.col, text_width);
+        let mut row = self.cursor.row;
+        let mut remaining = n;
+
+        while remaining > 0 {
+            if seg >= remaining {
+                seg -= remaining;
+                remaining = 0;
+            } else {
+                remaining -= seg + 1;
+                if row > 0 {
+                    row -= 1;
+                    let prev_line = self.document.rope.line(row);
+                    seg = wrap::wrap_count(prev_line, text_width) - 1;
+                } else {
+                    seg = 0;
+                    remaining = 0;
+                }
+            }
+        }
+
+        self.cursor.row = row;
+        let target_line = self.document.rope.line(row);
+        self.cursor.col = wrap::wrap_pos_to_char(target_line, seg, col_in_seg, text_width);
         self.clamp_cursor();
     }
 
@@ -3077,6 +3369,7 @@ impl Editor {
             // Load pane-specific state (cursor, view, history, highlights, search, jump)
             self.cursor = pane.cursor;
             self.view = pane.view;
+            self.config.wrap = pane.view.wrap;
             self.history = std::mem::replace(&mut pane.history, History::new());
             self.syntax_tree = pane.syntax_tree.take();
             self.line_styles = std::mem::take(&mut pane.line_styles);
@@ -3311,6 +3604,19 @@ impl Editor {
                     .collect::<Vec<_>>()
                     .join(" | ");
                 self.status_message = Some(msg);
+            }
+            "set wrap" => {
+                self.config.wrap = true;
+                self.view.wrap = true;
+                self.view.offset_wrap = 0;
+                self.view.offset_col = 0;
+                self.status_message = Some("wrap on".to_string());
+            }
+            "set nowrap" => {
+                self.config.wrap = false;
+                self.view.wrap = false;
+                self.view.offset_wrap = 0;
+                self.status_message = Some("wrap off".to_string());
             }
             other => {
                 self.status_message = Some(format!("Unknown command: {other}"));

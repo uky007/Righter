@@ -1,6 +1,7 @@
 pub struct Config {
     pub tab_width: usize,
     pub scroll_off: usize,
+    pub wrap: bool,
 }
 
 impl Default for Config {
@@ -8,6 +9,7 @@ impl Default for Config {
         Self {
             tab_width: 4,
             scroll_off: 5,
+            wrap: false,
         }
     }
 }

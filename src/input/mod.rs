@@ -30,6 +30,8 @@ pub fn execute(editor: &mut Editor, cmd: Command) -> Option<DeferredAction> {
         Command::MoveWORDEnd => editor.move_word_end_big(),
         Command::MoveParagraphForward => editor.move_paragraph_forward(),
         Command::MoveParagraphBackward => editor.move_paragraph_backward(),
+        Command::MoveDocumentLineDown => editor.move_document_line_down(),
+        Command::MoveDocumentLineUp => editor.move_document_line_up(),
 
         // Editing
         Command::InsertChar(ch) => editor.insert_char(ch),
