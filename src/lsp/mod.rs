@@ -115,7 +115,7 @@ pub struct LspTextEdit {
 
 /// Unified event type for the main loop.
 pub enum AppEvent {
-    Key(crossterm::event::KeyEvent),
+    Key(crate::key::KeyInput),
     Resize(u16, u16),
     Lsp(LspMessage),
 }
@@ -172,10 +172,7 @@ impl LspClient {
         };
 
         // Send initialize request
-        let root_uri = format!(
-            "file://{}",
-            root_path.canonicalize().unwrap_or(root_path.to_path_buf()).display()
-        );
+        let root_uri = path_to_uri(&root_path.canonicalize().unwrap_or(root_path.to_path_buf()));
         let params = json!({
             "processId": std::process::id(),
             "rootUri": root_uri,
@@ -411,11 +408,44 @@ impl LspClient {
 
 pub fn path_to_uri(path: &Path) -> String {
     let abs = path.canonicalize().unwrap_or(path.to_path_buf());
-    format!("file://{}", abs.display())
+    let path_str = abs.to_string_lossy();
+    let mut encoded = String::with_capacity(path_str.len() + 16);
+    encoded.push_str("file://");
+    for byte in path_str.as_bytes() {
+        match *byte {
+            // Unreserved characters (RFC 3986) + '/' and ':'
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9'
+            | b'-' | b'.' | b'_' | b'~' | b'/' | b':' => {
+                encoded.push(*byte as char);
+            }
+            _ => {
+                encoded.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    encoded
 }
 
 pub fn uri_to_path(uri: &str) -> Option<String> {
-    uri.strip_prefix("file://").map(|s| s.to_string())
+    let encoded = uri.strip_prefix("file://")?;
+    let mut decoded = Vec::with_capacity(encoded.len());
+    let bytes = encoded.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(val) = u8::from_str_radix(
+                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
+                16,
+            ) {
+                decoded.push(val);
+                i += 3;
+                continue;
+            }
+        }
+        decoded.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(decoded).ok()
 }
 
 pub fn find_project_root(file_path: &Path) -> std::path::PathBuf {

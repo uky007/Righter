@@ -1,10 +1,13 @@
+#[cfg(feature = "tui")]
 mod app;
 mod buffer;
 mod config;
 mod editor;
 mod highlight;
 mod input;
+mod key;
 mod lsp;
+#[cfg(feature = "tui")]
 mod ui;
 
 use std::io::stderr;

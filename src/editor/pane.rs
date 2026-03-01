@@ -1,15 +1,43 @@
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-
 use crate::editor::document::Document;
 use crate::editor::history::History;
 use crate::editor::selection::Position;
 use crate::editor::view::View;
 use crate::highlight::{self, LineStyles};
+use crate::highlight::style::SyntaxStyle;
 use crate::input::mode::Mode;
 use crate::lsp::LspDiagnostic;
 
 use crate::buffer;
+
+/// Frontend-independent rectangle for pane layout.
+/// Equivalent to ratatui::layout::Rect but without the TUI dependency.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AreaRect {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl AreaRect {
+    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
+        Self { x, y, width, height }
+    }
+}
+
+#[cfg(feature = "tui")]
+impl From<ratatui::layout::Rect> for AreaRect {
+    fn from(r: ratatui::layout::Rect) -> Self {
+        AreaRect { x: r.x, y: r.y, width: r.width, height: r.height }
+    }
+}
+
+#[cfg(feature = "tui")]
+impl From<AreaRect> for ratatui::layout::Rect {
+    fn from(r: AreaRect) -> Self {
+        ratatui::layout::Rect::new(r.x, r.y, r.width, r.height)
+    }
+}
 
 /// Per-pane state. Each pane has its own cursor, view, history, and buffer reference.
 pub struct Pane {
@@ -69,13 +97,13 @@ pub enum PaneNode {
 
 impl PaneNode {
     /// Calculate the layout rect for each leaf pane.
-    pub fn layout(&self, area: Rect) -> Vec<(usize, Rect)> {
+    pub fn layout(&self, area: AreaRect) -> Vec<(usize, AreaRect)> {
         let mut result = Vec::new();
         self.layout_inner(area, &mut result);
         result
     }
 
-    fn layout_inner(&self, area: Rect, result: &mut Vec<(usize, Rect)>) {
+    fn layout_inner(&self, area: AreaRect, result: &mut Vec<(usize, AreaRect)>) {
         match self {
             PaneNode::Leaf(id) => {
                 result.push((*id, area));
@@ -93,9 +121,9 @@ impl PaneNode {
                         first.layout_inner(area, result);
                         return;
                     }
-                    let left = Rect::new(area.x, area.y, half, area.height);
+                    let left = AreaRect::new(area.x, area.y, half, area.height);
                     // 1-column separator
-                    let right = Rect::new(
+                    let right = AreaRect::new(
                         area.x + half + 1,
                         area.y,
                         area.width - half - 1,
@@ -111,8 +139,8 @@ impl PaneNode {
                         first.layout_inner(area, result);
                         return;
                     }
-                    let top = Rect::new(area.x, area.y, area.width, half);
-                    let bottom = Rect::new(
+                    let top = AreaRect::new(area.x, area.y, area.width, half);
+                    let bottom = AreaRect::new(
                         area.x,
                         area.y + half,
                         area.width,
@@ -194,7 +222,7 @@ impl PaneNode {
         &self,
         from_id: usize,
         dir: NavigateDir,
-        rects: &[(usize, Rect)],
+        rects: &[(usize, AreaRect)],
     ) -> Option<usize> {
         let from_rect = rects.iter().find(|(id, _)| *id == from_id)?.1;
         let center_x = from_rect.x as i32 + from_rect.width as i32 / 2;
@@ -235,13 +263,13 @@ impl PaneNode {
     }
 
     /// Collect vertical separator positions for rendering.
-    pub fn separators(&self, area: Rect) -> Vec<(u16, u16, u16)> {
+    pub fn separators(&self, area: AreaRect) -> Vec<(u16, u16, u16)> {
         let mut result = Vec::new();
         self.collect_separators(area, &mut result);
         result
     }
 
-    fn collect_separators(&self, area: Rect, result: &mut Vec<(u16, u16, u16)>) {
+    fn collect_separators(&self, area: AreaRect, result: &mut Vec<(u16, u16, u16)>) {
         if let PaneNode::Split {
             direction,
             first,
@@ -254,8 +282,8 @@ impl PaneNode {
                     if half >= 2 && area.width >= 5 {
                         // Separator at x = area.x + half
                         result.push((area.x + half, area.y, area.height));
-                        let left = Rect::new(area.x, area.y, half, area.height);
-                        let right = Rect::new(
+                        let left = AreaRect::new(area.x, area.y, half, area.height);
+                        let right = AreaRect::new(
                             area.x + half + 1,
                             area.y,
                             area.width - half - 1,
@@ -268,8 +296,8 @@ impl PaneNode {
                 SplitDirection::Horizontal => {
                     let half = area.height / 2;
                     if half >= 2 && area.height >= 4 {
-                        let top = Rect::new(area.x, area.y, area.width, half);
-                        let bottom = Rect::new(
+                        let top = AreaRect::new(area.x, area.y, area.width, half);
+                        let bottom = AreaRect::new(
                             area.x,
                             area.y + half,
                             area.width,
@@ -310,7 +338,7 @@ pub struct PaneRenderData<'a> {
 
 impl<'a> PaneRenderData<'a> {
     /// Get syntax highlight style at a position.
-    pub fn highlight_style_at(&self, doc_row: usize, col: usize) -> Style {
+    pub fn highlight_style_at(&self, doc_row: usize, col: usize) -> SyntaxStyle {
         if let Some(rel) = doc_row.checked_sub(self.styles_offset) {
             highlight::style_at(self.line_styles, rel, col)
         } else {

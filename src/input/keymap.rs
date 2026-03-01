@@ -1,10 +1,10 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crate::key::{KeyCode, KeyInput};
 
 use crate::editor::Editor;
 use crate::input::command::{CaseOp, Command, Motion};
 use crate::input::mode::Mode;
 
-pub fn map_key(editor: &mut Editor, key: KeyEvent) -> Option<Command> {
+pub fn map_key(editor: &mut Editor, key: KeyInput) -> Option<Command> {
     // File finder intercepts all keys when showing
     if editor.showing_file_finder {
         return map_file_finder(key);
@@ -19,7 +19,7 @@ pub fn map_key(editor: &mut Editor, key: KeyEvent) -> Option<Command> {
     }
 }
 
-fn map_normal(editor: &mut Editor, key: KeyEvent) -> Option<Command> {
+fn map_normal(editor: &mut Editor, key: KeyInput) -> Option<Command> {
     // Dismiss popups on any key if showing hover or references
     if editor.showing_hover {
         editor.showing_hover = false;
@@ -60,7 +60,7 @@ fn map_normal(editor: &mut Editor, key: KeyEvent) -> Option<Command> {
     }
 
     // Ctrl-modified keys first (before plain char matches)
-    if key.modifiers.contains(KeyModifiers::CONTROL) {
+    if key.ctrl {
         match key.code {
             KeyCode::Char('d') => return Some(Command::HalfPageDown),
             KeyCode::Char('u') => return Some(Command::HalfPageUp),
@@ -241,7 +241,7 @@ fn map_normal(editor: &mut Editor, key: KeyEvent) -> Option<Command> {
     }
 }
 
-fn handle_pending(editor: &mut Editor, key: KeyEvent) -> Option<Command> {
+fn handle_pending(editor: &mut Editor, key: KeyInput) -> Option<Command> {
     // Esc always cancels pending
     if key.code == KeyCode::Esc {
         editor.pending_keys.clear();
@@ -468,9 +468,9 @@ fn map_case_motion(editor: &mut Editor, op: char, ch: char) -> Option<Command> {
     }
 }
 
-fn map_visual(key: KeyEvent) -> Option<Command> {
+fn map_visual(key: KeyInput) -> Option<Command> {
     // Ctrl-modified keys
-    if key.modifiers.contains(KeyModifiers::CONTROL) {
+    if key.ctrl {
         match key.code {
             KeyCode::Char('d') => return Some(Command::HalfPageDown),
             KeyCode::Char('u') => return Some(Command::HalfPageUp),
@@ -523,7 +523,7 @@ fn map_visual(key: KeyEvent) -> Option<Command> {
     }
 }
 
-fn map_insert(editor: &Editor, key: KeyEvent) -> Option<Command> {
+fn map_insert(editor: &Editor, key: KeyInput) -> Option<Command> {
     // When completion popup is showing, intercept navigation keys
     if editor.showing_completion {
         match key.code {
@@ -546,7 +546,7 @@ fn map_insert(editor: &Editor, key: KeyEvent) -> Option<Command> {
         KeyCode::Up => Some(Command::MoveUp),
         KeyCode::Down => Some(Command::MoveDown),
         // Ctrl-Space to trigger completion
-        KeyCode::Char(' ') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        KeyCode::Char(' ') if key.ctrl => {
             Some(Command::TriggerCompletion)
         }
         KeyCode::Char(ch) => Some(Command::InsertChar(ch)),
@@ -555,7 +555,7 @@ fn map_insert(editor: &Editor, key: KeyEvent) -> Option<Command> {
     }
 }
 
-fn map_command(key: KeyEvent) -> Option<Command> {
+fn map_command(key: KeyInput) -> Option<Command> {
     match key.code {
         KeyCode::Esc => Some(Command::ExitToNormalMode),
         KeyCode::Enter => Some(Command::CommandExecute),
@@ -567,7 +567,7 @@ fn map_command(key: KeyEvent) -> Option<Command> {
     }
 }
 
-fn map_search(key: KeyEvent) -> Option<Command> {
+fn map_search(key: KeyInput) -> Option<Command> {
     match key.code {
         KeyCode::Esc => Some(Command::SearchCancel),
         KeyCode::Enter => Some(Command::SearchConfirm),
@@ -577,17 +577,17 @@ fn map_search(key: KeyEvent) -> Option<Command> {
     }
 }
 
-fn map_file_finder(key: KeyEvent) -> Option<Command> {
+fn map_file_finder(key: KeyInput) -> Option<Command> {
     match key.code {
         KeyCode::Esc => Some(Command::FileFinderCancel),
         KeyCode::Enter => Some(Command::FileFinderConfirm),
         KeyCode::Backspace => Some(Command::FileFinderBackspace),
         KeyCode::Down | KeyCode::Tab => Some(Command::FileFinderNext),
         KeyCode::Up | KeyCode::BackTab => Some(Command::FileFinderPrev),
-        KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        KeyCode::Char('n') if key.ctrl => {
             Some(Command::FileFinderNext)
         }
-        KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        KeyCode::Char('p') if key.ctrl => {
             Some(Command::FileFinderPrev)
         }
         KeyCode::Char(ch) => Some(Command::FileFinderInput(ch)),

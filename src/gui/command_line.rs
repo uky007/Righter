@@ -1,0 +1,45 @@
+use egui::{Color32, FontId, FontFamily, Pos2, Ui};
+
+use crate::editor::Editor;
+use crate::input::mode::Mode;
+
+/// Draw the command/search line at the bottom of the screen.
+pub fn draw_command_line(editor: &Editor, ui: &mut Ui) {
+    let rect = ui.available_rect_before_wrap();
+    let painter = ui.painter_at(rect);
+    let font_size = 14.0;
+    let font = FontId::new(font_size, FontFamily::Monospace);
+
+    // Background
+    painter.rect_filled(rect, 0.0, Color32::from_rgb(40, 44, 52));
+
+    let text = match editor.mode {
+        Mode::Command => format!(":{}", editor.command_buffer),
+        Mode::Search => format!("/{}", editor.search_query),
+        _ => {
+            // Show status message or diagnostic at cursor
+            if let Some(ref msg) = editor.status_message {
+                msg.clone()
+            } else {
+                String::new()
+            }
+        }
+    };
+
+    if !text.is_empty() {
+        let color = match editor.mode {
+            Mode::Command | Mode::Search => Color32::WHITE,
+            _ => Color32::from_rgb(171, 178, 191),
+        };
+        painter.text(
+            Pos2::new(rect.min.x + 4.0, rect.min.y),
+            egui::Align2::LEFT_TOP,
+            &text,
+            font,
+            color,
+        );
+    }
+
+    // Reserve the space
+    ui.allocate_rect(rect, egui::Sense::hover());
+}

@@ -7,7 +7,20 @@ use crate::buffer;
 use crate::editor::pane::PaneRenderData;
 use crate::editor::selection::Position;
 use crate::editor::wrap;
+use crate::highlight::style::SyntaxStyle;
 use crate::input::mode::Mode;
+
+/// Convert SyntaxStyle to ratatui Style.
+fn to_ratatui_style(s: SyntaxStyle) -> Style {
+    let mut style = Style::default();
+    if let Some(c) = s.fg {
+        style = style.fg(Color::Rgb(c.0, c.1, c.2));
+    }
+    if s.italic {
+        style = style.add_modifier(Modifier::ITALIC);
+    }
+    style
+}
 
 pub struct EditorView<'a> {
     data: PaneRenderData<'a>,
@@ -59,8 +72,8 @@ impl<'a> EditorView<'a> {
 
         let is_selected = self.is_selected(doc_row, char_idx);
 
-        // Base style from syntax highlighting
-        let hl = self.data.highlight_style_at(doc_row, char_idx);
+        // Base style from syntax highlighting (SyntaxStyle → ratatui Style)
+        let hl = to_ratatui_style(self.data.highlight_style_at(doc_row, char_idx));
 
         // Apply diagnostic line background to base style
         let diag_sev = self.diagnostic_severity_at(doc_row);

@@ -5,20 +5,18 @@ pub mod selection;
 pub mod view;
 pub mod wrap;
 
-use ratatui::style::Style;
-
 use crate::buffer;
 use crate::config::Config;
 use crate::highlight::{self, Highlighter, LineStyles};
+use crate::highlight::style::SyntaxStyle;
 use crate::input::command::Motion;
 use crate::input::mode::Mode;
+use crate::key::KeyInput;
 use crate::lsp::{LspCodeAction, LspCompletionItem, LspDiagnostic, LspLocation};
-
-use ratatui::layout::Rect;
 
 use self::document::Document;
 use self::history::History;
-use self::pane::{NavigateDir, Pane, PaneNode, SplitDirection};
+use self::pane::{AreaRect, NavigateDir, Pane, PaneNode, SplitDirection};
 use self::selection::Position;
 use self::view::View;
 
@@ -174,8 +172,8 @@ pub struct Editor {
     pub selected_register: Option<char>,
     // Macro recording
     pub recording_macro: Option<char>,
-    pub macro_buffer: Vec<crossterm::event::KeyEvent>,
-    pub macros: std::collections::HashMap<char, Vec<crossterm::event::KeyEvent>>,
+    pub macro_buffer: Vec<KeyInput>,
+    pub macros: std::collections::HashMap<char, Vec<KeyInput>>,
     pub last_macro: Option<char>,
     // Phase 11: Code actions
     pub code_actions: Vec<LspCodeAction>,
@@ -190,7 +188,7 @@ pub struct Editor {
     pub active_pane_id: usize,
     pub pane_layout: PaneNode,
     pub next_pane_id: usize,
-    pub editor_area: Rect,
+    pub editor_area: AreaRect,
 }
 
 impl Editor {
@@ -263,7 +261,7 @@ impl Editor {
             active_pane_id: 0,
             pane_layout: PaneNode::Leaf(0),
             next_pane_id: 1,
-            editor_area: Rect::default(),
+            editor_area: AreaRect::default(),
         }
     }
 
@@ -1995,7 +1993,7 @@ impl Editor {
         }
     }
 
-    pub fn highlight_style_at(&self, doc_row: usize, col: usize) -> Style {
+    pub fn highlight_style_at(&self, doc_row: usize, col: usize) -> SyntaxStyle {
         if let Some(rel) = doc_row.checked_sub(self.styles_offset) {
             highlight::style_at(&self.line_styles, rel, col)
         } else {

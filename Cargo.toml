@@ -3,10 +3,19 @@ name = "righter"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["tui"]
+tui = ["dep:ratatui", "dep:crossterm"]
+gui = ["dep:eframe", "dep:egui"]
+
 [dependencies]
-# TUI
-ratatui = { version = "0.29", features = ["crossterm"] }
-crossterm = { version = "0.28", features = ["event-stream"] }
+# TUI (optional, default)
+ratatui = { version = "0.29", features = ["crossterm"], optional = true }
+crossterm = { version = "0.28", features = ["event-stream"], optional = true }
+
+# GUI (optional)
+eframe = { version = "0.31", optional = true }
+egui = { version = "0.31", optional = true }
 
 # Async
 tokio = { version = "1", features = ["full"] }
@@ -34,3 +43,13 @@ unicode-width = "0.2"
 
 # Regex
 regex = "1"
+
+[[bin]]
+name = "righter"
+path = "src/main.rs"
+required-features = ["tui"]
+
+[[bin]]
+name = "righter-gui"
+path = "src/gui_main.rs"
+required-features = ["gui"]

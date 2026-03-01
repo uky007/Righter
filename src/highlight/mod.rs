@@ -1,14 +1,15 @@
+pub mod style;
 pub mod theme;
 
-use ratatui::style::Style;
 use ropey::Rope;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Parser, Query, QueryCursor, Tree};
 
+use self::style::SyntaxStyle;
 use self::theme::{default_style, style_for_capture};
 
-/// Per-line highlight spans: Vec of (start_col, end_col, Style) per visible line.
-pub type LineStyles = Vec<Vec<(usize, usize, Style)>>;
+/// Per-line highlight spans: Vec of (start_col, end_col, SyntaxStyle) per visible line.
+pub type LineStyles = Vec<Vec<(usize, usize, SyntaxStyle)>>;
 
 pub struct Highlighter {
     parser: Parser,
@@ -51,7 +52,7 @@ impl Highlighter {
         end_line: usize,
     ) -> LineStyles {
         let num_lines = end_line.saturating_sub(start_line);
-        let mut result: Vec<Vec<(usize, usize, Style)>> = vec![vec![]; num_lines];
+        let mut result: Vec<Vec<(usize, usize, SyntaxStyle)>> = vec![vec![]; num_lines];
 
         let source = rope.to_string();
         let source_bytes = source.as_bytes();
@@ -117,7 +118,7 @@ fn byte_col_to_char_col(rope: &Rope, line: usize, byte_col: usize) -> usize {
 }
 
 /// Look up the highlight style for a specific position.
-pub fn style_at(line_styles: &[Vec<(usize, usize, Style)>], rel_line: usize, col: usize) -> Style {
+pub fn style_at(line_styles: &[Vec<(usize, usize, SyntaxStyle)>], rel_line: usize, col: usize) -> SyntaxStyle {
     if rel_line < line_styles.len() {
         let mut result = default_style();
         for &(start, end, style) in &line_styles[rel_line] {

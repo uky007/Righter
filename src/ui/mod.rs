@@ -14,7 +14,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Style};
 
 use crate::editor::Editor;
-use crate::editor::pane::PaneRenderData;
+use crate::editor::pane::{AreaRect, PaneRenderData};
 
 use self::code_actions::CodeActionsPopup;
 use self::command_line::CommandLine;
@@ -26,6 +26,11 @@ use self::hover::HoverPopup;
 use self::references::ReferencesPopup;
 use self::status_line::StatusLine;
 use self::tab_bar::TabBar;
+
+/// Convert AreaRect to ratatui Rect.
+fn to_rect(a: AreaRect) -> Rect {
+    Rect::new(a.x, a.y, a.width, a.height)
+}
 
 pub fn render(editor: &Editor, frame: &mut Frame) {
     let size = frame.area();
@@ -53,14 +58,14 @@ pub fn render(editor: &Editor, frame: &mut Frame) {
         frame.render_widget(TabBar::new(editor), chunks[0]);
     }
 
-    let pane_area = chunks[1];
+    let pane_area_rect: AreaRect = chunks[1].into();
 
     // Calculate pane layout rects
-    let pane_rects = editor.pane_layout.layout(pane_area);
+    let pane_rects = editor.pane_layout.layout(pane_area_rect);
 
     // Draw vertical separators
     let buf = frame.buffer_mut();
-    let separators = editor.pane_layout.separators(pane_area);
+    let separators = editor.pane_layout.separators(pane_area_rect);
     let sep_style = Style::default().fg(Color::DarkGray);
     for (x, y, height) in separators {
         for dy in 0..height {
@@ -72,8 +77,9 @@ pub fn render(editor: &Editor, frame: &mut Frame) {
     }
 
     // Render each pane
-    let mut active_pane_rect = pane_area;
-    for &(pane_id, rect) in &pane_rects {
+    let mut active_pane_rect = chunks[1];
+    for &(pane_id, arect) in &pane_rects {
+        let rect = to_rect(arect);
         if rect.height < 2 {
             continue; // need at least 1 row for editor + 1 row for status
         }

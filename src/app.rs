@@ -11,9 +11,11 @@ use tokio::sync::mpsc;
 
 use crate::editor::{DeferredAction, Editor};
 use crate::editor::document::Document;
+use crate::editor::pane::AreaRect;
 use crate::input;
 use crate::input::command::Command;
 use crate::input::keymap;
+use crate::key::KeyInput;
 use crate::lsp::{self, AppEvent, LspClient, LspMessage};
 use crate::ui;
 
@@ -23,6 +25,7 @@ pub struct App {
     event_rx: mpsc::UnboundedReceiver<AppEvent>,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     file_uri: Option<String>,
+    last_notified_version: i64,
 }
 
 impl App {
@@ -40,6 +43,7 @@ impl App {
             event_rx,
             event_tx,
             file_uri: None,
+            last_notified_version: 0,
         })
     }
 
@@ -59,8 +63,10 @@ impl App {
                 match reader.next().await {
                     Some(Ok(Event::Key(key))) => {
                         if key.kind == KeyEventKind::Press {
-                            if tx.send(AppEvent::Key(key)).is_err() {
-                                break;
+                            if let Some(ki) = KeyInput::from_crossterm(key) {
+                                if tx.send(AppEvent::Key(ki)).is_err() {
+                                    break;
+                                }
                             }
                         }
                     }
@@ -86,7 +92,7 @@ impl App {
                     let size = terminal.size()?;
                     let tab_rows: u16 = if self.editor.buffers.len() > 1 { 1 } else { 0 };
                     let command_rows: u16 = 1;
-                    let pane_area = ratatui::layout::Rect::new(
+                    let pane_area = AreaRect::new(
                         0,
                         tab_rows,
                         size.width,
@@ -135,8 +141,8 @@ impl App {
                                 // Don't record the 'q' that stops recording
                                 let is_stop = matches!(
                                     key.code,
-                                    crossterm::event::KeyCode::Char('q')
-                                ) && key.modifiers.is_empty()
+                                    crate::key::KeyCode::Char('q')
+                                ) && !key.ctrl
                                     && self.editor.mode == crate::input::mode::Mode::Normal;
                                 if !is_stop {
                                     self.editor.macro_buffer.push(key);
@@ -420,13 +426,17 @@ impl App {
     }
 
     async fn notify_lsp_change(&mut self) {
+        let version = self.editor.document.version;
+        if version == self.last_notified_version {
+            return;
+        }
         if let (Some(lsp), Some(uri)) = (&mut self.lsp_client, &self.file_uri) {
             if !lsp.initialized {
                 return;
             }
             let text = self.editor.document.rope.to_string();
-            let version = self.editor.document.version;
             let _ = lsp.did_change(uri, &text, version).await;
+            self.last_notified_version = version;
         }
     }
 
@@ -824,6 +834,9 @@ impl App {
             }
         }
 
+        // Reset version tracking for the new file
+        self.last_notified_version = self.editor.document.version;
+
         // Open new file in LSP
         if let Some(path) = &self.editor.document.path {
             if let Some(lsp) = &mut self.lsp_client {
@@ -878,6 +891,9 @@ impl App {
                 self.editor.add_buffer(doc);
                 self.editor.status_message =
                     Some(format!("\"{}\"", self.editor.document.file_name()));
+
+                // Reset version tracking for the new file
+                self.last_notified_version = self.editor.document.version;
 
                 // Open in LSP
                 if let Some(lsp) = &mut self.lsp_client {
