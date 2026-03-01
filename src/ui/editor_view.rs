@@ -4,26 +4,21 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::Widget;
 
 use crate::buffer;
-use crate::editor::Editor;
+use crate::editor::pane::PaneRenderData;
 use crate::editor::selection::Position;
 use crate::input::mode::Mode;
 
 pub struct EditorView<'a> {
-    editor: &'a Editor,
-    matching_bracket: Option<Position>,
+    data: PaneRenderData<'a>,
 }
 
 impl<'a> EditorView<'a> {
-    pub fn new(editor: &'a Editor) -> Self {
-        let matching_bracket = editor.matching_bracket();
-        Self {
-            editor,
-            matching_bracket,
-        }
+    pub fn new(data: PaneRenderData<'a>) -> Self {
+        Self { data }
     }
 
     fn gutter_width(&self) -> u16 {
-        let lines = self.editor.document.line_count();
+        let lines = self.data.document.line_count();
         let digits = if lines == 0 {
             1
         } else {
@@ -33,7 +28,7 @@ impl<'a> EditorView<'a> {
     }
 
     fn is_selected(&self, row: usize, col: usize) -> bool {
-        if let Some((start, end)) = self.editor.selection_range() {
+        if let Some((start, end)) = self.data.selection_range() {
             let pos = Position { row, col };
             pos >= start && pos <= end
         } else {
@@ -43,7 +38,7 @@ impl<'a> EditorView<'a> {
 
     fn diagnostic_severity_at(&self, row: usize) -> Option<u8> {
         let mut worst: Option<u8> = None;
-        for d in &self.editor.diagnostics {
+        for d in self.data.diagnostics {
             if d.start_line as usize <= row && row <= d.end_line as usize {
                 let sev = d.severity;
                 worst = Some(match worst {
@@ -56,14 +51,15 @@ impl<'a> EditorView<'a> {
     }
 
     fn char_style(&self, doc_row: usize, char_idx: usize) -> Style {
-        let is_cursor = doc_row == self.editor.cursor.row
-            && char_idx == self.editor.cursor.col
-            && !matches!(self.editor.mode, Mode::Insert);
+        let is_cursor = self.data.is_active
+            && doc_row == self.data.cursor.row
+            && char_idx == self.data.cursor.col
+            && !matches!(self.data.mode, Mode::Insert);
 
         let is_selected = self.is_selected(doc_row, char_idx);
 
         // Base style from syntax highlighting
-        let hl = self.editor.highlight_style_at(doc_row, char_idx);
+        let hl = self.data.highlight_style_at(doc_row, char_idx);
 
         // Apply diagnostic line background to base style
         let diag_sev = self.diagnostic_severity_at(doc_row);
@@ -82,10 +78,10 @@ impl<'a> EditorView<'a> {
             hl.bg(Color::LightBlue)
         } else {
             // Search match highlighting
-            let is_search_match = self.editor.is_search_match(doc_row, char_idx);
+            let is_search_match = self.data.is_search_match(doc_row, char_idx);
 
             // Underline diagnostic ranges (the specific token, not whole line)
-            let in_diag = self.editor.diagnostics.iter().any(|d| {
+            let in_diag = self.data.diagnostics.iter().any(|d| {
                 let start_row = d.start_line as usize;
                 let end_row = d.end_line as usize;
                 let start_col = d.start_col as usize;
@@ -104,6 +100,7 @@ impl<'a> EditorView<'a> {
 
             // Bracket matching highlight
             let is_matching_bracket = self
+                .data
                 .matching_bracket
                 .is_some_and(|pos| pos.row == doc_row && pos.col == char_idx);
 
@@ -127,22 +124,23 @@ impl Widget for EditorView<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let gutter_w = self.gutter_width();
         let text_width = area.width.saturating_sub(gutter_w);
-        let offset_row = self.editor.view.offset_row;
-        let offset_col = self.editor.view.offset_col;
+        let offset_row = self.data.view.offset_row;
+        let offset_col = self.data.view.offset_col;
 
         for y in 0..area.height {
             let doc_row = offset_row + y as usize;
             let screen_y = area.y + y;
 
-            if doc_row < self.editor.document.line_count() {
+            if doc_row < self.data.document.line_count() {
                 // Draw diagnostic marker or line number
                 let diag_sev = self.diagnostic_severity_at(doc_row);
                 let line_num =
                     format!("{:>width$} ", doc_row + 1, width = (gutter_w - 1) as usize);
+                let is_cursor_line = self.data.is_active && doc_row == self.data.cursor.row;
                 let gutter_style = match diag_sev {
                     Some(1) => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                     Some(2) => Style::default().fg(Color::Yellow),
-                    _ if doc_row == self.editor.cursor.row => Style::default().fg(Color::Yellow),
+                    _ if is_cursor_line => Style::default().fg(Color::Yellow),
                     _ => Style::default().fg(Color::DarkGray),
                 };
                 for (x, ch) in line_num.chars().enumerate() {
@@ -185,7 +183,7 @@ impl Widget for EditorView<'_> {
                 }
 
                 // Draw text
-                let line = self.editor.document.rope.line(doc_row);
+                let line = self.data.document.rope.line(doc_row);
                 let line_len = buffer::line_display_len(line);
                 let mut text_x: u16 = 0;
 
@@ -207,13 +205,14 @@ impl Widget for EditorView<'_> {
                     text_x += w as u16;
                 }
 
-                // Draw cursor at end of line in insert mode
-                if self.editor.mode == Mode::Insert
-                    && doc_row == self.editor.cursor.row
-                    && self.editor.cursor.col >= line_len
+                // Draw cursor at end of line in insert mode (only for active pane)
+                if self.data.is_active
+                    && self.data.mode == Mode::Insert
+                    && doc_row == self.data.cursor.row
+                    && self.data.cursor.col >= line_len
                 {
                     let cursor_x =
-                        area.x + gutter_w + (self.editor.cursor.col - offset_col) as u16;
+                        area.x + gutter_w + (self.data.cursor.col - offset_col) as u16;
                     if cursor_x < area.right() {
                         buf[(cursor_x, screen_y)].set_char(' ').set_style(
                             Style::default().bg(Color::White).fg(Color::Black),
@@ -221,9 +220,10 @@ impl Widget for EditorView<'_> {
                     }
                 }
 
-                // In non-insert mode, if cursor is on an empty line
-                if !matches!(self.editor.mode, Mode::Insert)
-                    && doc_row == self.editor.cursor.row
+                // In non-insert mode, if cursor is on an empty line (only for active pane)
+                if self.data.is_active
+                    && !matches!(self.data.mode, Mode::Insert)
+                    && doc_row == self.data.cursor.row
                     && line_len == 0
                 {
                     let cursor_x = area.x + gutter_w;
@@ -235,7 +235,7 @@ impl Widget for EditorView<'_> {
                 }
 
                 // In visual line mode, highlight remaining space on selected lines
-                if self.editor.mode == Mode::VisualLine && self.is_selected(doc_row, 0) {
+                if self.data.mode == Mode::VisualLine && self.is_selected(doc_row, 0) {
                     let start_x = area.x + gutter_w + text_x;
                     let sel_style = Style::default().bg(Color::LightBlue).fg(Color::Black);
                     for sx in start_x..area.right() {

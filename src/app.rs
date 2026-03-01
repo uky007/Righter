@@ -82,11 +82,40 @@ impl App {
         loop {
             tokio::select! {
                 _ = render_interval.tick() => {
-                    // Update view dimensions and scroll
+                    // Calculate pane area dimensions
                     let size = terminal.size()?;
-                    self.editor.view.width = size.width;
                     let tab_rows: u16 = if self.editor.buffers.len() > 1 { 1 } else { 0 };
-                    self.editor.view.height = size.height.saturating_sub(2 + tab_rows);
+                    let command_rows: u16 = 1;
+                    let pane_area = ratatui::layout::Rect::new(
+                        0,
+                        tab_rows,
+                        size.width,
+                        size.height.saturating_sub(tab_rows + command_rows),
+                    );
+                    self.editor.editor_area = pane_area;
+
+                    // Calculate layout rects for all panes
+                    let pane_rects = self.editor.pane_layout.layout(pane_area);
+
+                    // Update view dimensions for each pane
+                    for &(pane_id, rect) in &pane_rects {
+                        // Each pane rect includes editor area + status line (1 row)
+                        let editor_height = rect.height.saturating_sub(1);
+                        let editor_width = rect.width;
+
+                        if pane_id == self.editor.active_pane_id {
+                            // Active pane uses top-level editor fields
+                            self.editor.view.width = editor_width;
+                            self.editor.view.height = editor_height;
+                        } else {
+                            // Inactive panes update their saved view
+                            if let Some(pane) = self.editor.panes.iter_mut().find(|p| p.id == pane_id) {
+                                pane.view.width = editor_width;
+                                pane.view.height = editor_height;
+                            }
+                        }
+                    }
+
                     self.editor.scroll();
 
                     // Update syntax highlights for visible viewport

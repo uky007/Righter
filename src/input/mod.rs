@@ -2,6 +2,7 @@ pub mod command;
 pub mod keymap;
 pub mod mode;
 
+use crate::editor::pane::{NavigateDir, SplitDirection};
 use crate::editor::{DeferredAction, Editor, LastChange};
 use crate::input::command::Command;
 
@@ -212,6 +213,16 @@ pub fn execute(editor: &mut Editor, cmd: Command) -> Option<DeferredAction> {
         Command::FileFinderCancel => editor.file_finder_cancel(),
         Command::FileFinderNext => editor.file_finder_next(),
         Command::FileFinderPrev => editor.file_finder_prev(),
+
+        // Window split
+        Command::SplitHorizontal => return editor.split_pane(SplitDirection::Horizontal),
+        Command::SplitVertical => return editor.split_pane(SplitDirection::Vertical),
+        Command::PaneLeft => return editor.navigate_pane(NavigateDir::Left),
+        Command::PaneDown => return editor.navigate_pane(NavigateDir::Down),
+        Command::PaneUp => return editor.navigate_pane(NavigateDir::Up),
+        Command::PaneRight => return editor.navigate_pane(NavigateDir::Right),
+        Command::PaneNext => return editor.cycle_pane(),
+        Command::PaneClose => return editor.close_pane(),
 
         // Command mode
         Command::CommandInput(ch) => editor.command_input(ch),

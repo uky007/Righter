@@ -72,6 +72,10 @@ fn map_normal(editor: &mut Editor, key: KeyEvent) -> Option<Command> {
             KeyCode::Char('i') => return Some(Command::JumpForward),
             KeyCode::Char('a') => return Some(Command::IncrementNumber),
             KeyCode::Char('x') => return Some(Command::DecrementNumber),
+            KeyCode::Char('w') => {
+                editor.pending_keys.push('W'); // uppercase to avoid collision
+                return None;
+            }
             KeyCode::Char('c') => {
                 editor.should_quit = true;
                 return None;
@@ -405,6 +409,19 @@ fn handle_pending(editor: &mut Editor, key: KeyEvent) -> Option<Command> {
         },
         &['['] => match ch {
             'd' => Some(Command::DiagnosticPrev),
+            _ => None,
+        },
+
+        // --- Window split (Ctrl-W prefix) ---
+        &['W'] => match ch {
+            'v' => Some(Command::SplitVertical),
+            's' => Some(Command::SplitHorizontal),
+            'h' => Some(Command::PaneLeft),
+            'j' => Some(Command::PaneDown),
+            'k' => Some(Command::PaneUp),
+            'l' => Some(Command::PaneRight),
+            'w' => Some(Command::PaneNext),
+            'q' => Some(Command::PaneClose),
             _ => None,
         },
 

@@ -208,6 +208,16 @@ pub enum Command {
     CodeActionAccept,
     CodeActionDismiss,
 
+    // Window split
+    SplitHorizontal,
+    SplitVertical,
+    PaneLeft,
+    PaneDown,
+    PaneUp,
+    PaneRight,
+    PaneNext,
+    PaneClose,
+
     // Command mode
     CommandInput(char),
     CommandBackspace,

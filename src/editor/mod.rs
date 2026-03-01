@@ -1,5 +1,6 @@
 pub mod document;
 pub mod history;
+pub mod pane;
 pub mod selection;
 pub mod view;
 
@@ -12,8 +13,11 @@ use crate::input::command::Motion;
 use crate::input::mode::Mode;
 use crate::lsp::{LspCodeAction, LspCompletionItem, LspDiagnostic, LspLocation};
 
+use ratatui::layout::Rect;
+
 use self::document::Document;
 use self::history::History;
+use self::pane::{NavigateDir, Pane, PaneNode, SplitDirection};
 use self::selection::Position;
 use self::view::View;
 
@@ -180,6 +184,12 @@ pub struct Editor {
     // Phase 11: Diagnostics list
     pub showing_diagnostics: bool,
     pub diagnostic_list_index: usize,
+    // Window split (panes)
+    pub panes: Vec<Pane>,
+    pub active_pane_id: usize,
+    pub pane_layout: PaneNode,
+    pub next_pane_id: usize,
+    pub editor_area: Rect,
 }
 
 impl Editor {
@@ -248,6 +258,11 @@ impl Editor {
             pending_code_action_id: None,
             showing_diagnostics: false,
             diagnostic_list_index: 0,
+            panes: vec![Pane::new(0, 0)],
+            active_pane_id: 0,
+            pane_layout: PaneNode::Leaf(0),
+            next_pane_id: 1,
+            editor_area: Rect::default(),
         }
     }
 
@@ -2490,6 +2505,10 @@ impl Editor {
         }
         self.save_to_current_buffer();
         self.load_from_buffer(idx);
+        // Update active pane's buffer_idx
+        if let Some(pane) = self.panes.iter_mut().find(|p| p.id == self.active_pane_id) {
+            pane.buffer_idx = idx;
+        }
         self.mode = Mode::Normal;
         self.visual_anchor = None;
         self.pending_keys.clear();
@@ -2501,6 +2520,10 @@ impl Editor {
         let new_idx = self.buffers.len();
         self.buffers.push(BufferState::empty());
         self.current_buffer = new_idx;
+        // Update active pane's buffer_idx
+        if let Some(pane) = self.panes.iter_mut().find(|p| p.id == self.active_pane_id) {
+            pane.buffer_idx = new_idx;
+        }
         self.document = doc;
         self.cursor = Position::default();
         self.view = View::default();
@@ -2552,13 +2575,31 @@ impl Editor {
             self.should_quit = true;
             return None;
         }
-        self.buffers.remove(self.current_buffer);
-        let new_idx = if self.current_buffer >= self.buffers.len() {
+        let removed_idx = self.current_buffer;
+        self.buffers.remove(removed_idx);
+        // Adjust all pane buffer indices after the removed buffer
+        for pane in &mut self.panes {
+            if pane.buffer_idx > removed_idx {
+                pane.buffer_idx -= 1;
+            } else if pane.buffer_idx == removed_idx {
+                // Pane was pointing to the removed buffer, reassign
+                pane.buffer_idx = if removed_idx >= self.buffers.len() {
+                    self.buffers.len() - 1
+                } else {
+                    removed_idx
+                };
+            }
+        }
+        let new_idx = if removed_idx >= self.buffers.len() {
             self.buffers.len() - 1
         } else {
-            self.current_buffer
+            removed_idx
         };
         self.load_from_buffer(new_idx);
+        // Update active pane's buffer_idx
+        if let Some(pane) = self.panes.iter_mut().find(|p| p.id == self.active_pane_id) {
+            pane.buffer_idx = new_idx;
+        }
         self.mode = Mode::Normal;
         self.visual_anchor = None;
         self.pending_keys.clear();
@@ -2992,6 +3033,131 @@ impl Editor {
         None
     }
 
+    // --- Pane management ---
+
+    /// Save the current editor state into the active pane.
+    pub fn save_active_pane(&mut self) {
+        // Save document + diagnostics to the buffer
+        let buf = &mut self.buffers[self.current_buffer];
+        buf.document = std::mem::replace(&mut self.document, Document::new_empty());
+        buf.diagnostics = std::mem::take(&mut self.diagnostics);
+
+        // Save pane-specific state (cursor, view, history, highlights, search, jump)
+        if let Some(pane) = self.panes.iter_mut().find(|p| p.id == self.active_pane_id) {
+            pane.buffer_idx = self.current_buffer;
+            pane.cursor = self.cursor;
+            pane.view = self.view;
+            pane.history = std::mem::replace(&mut self.history, History::new());
+            pane.syntax_tree = self.syntax_tree.take();
+            pane.line_styles = std::mem::take(&mut self.line_styles);
+            pane.styles_offset = self.styles_offset;
+            pane.search_query = std::mem::take(&mut self.search_query);
+            pane.search_matches = std::mem::take(&mut self.search_matches);
+            pane.search_index = self.search_index;
+            pane.search_regex = self.search_regex.take();
+            pane.search_start_cursor = self.search_start_cursor.take();
+            pane.jump_list = std::mem::take(&mut self.jump_list);
+            pane.jump_index = self.jump_index;
+        }
+    }
+
+    /// Load pane state into the editor's active fields.
+    pub fn load_pane(&mut self, pane_id: usize) {
+        self.active_pane_id = pane_id;
+        if let Some(pane) = self.panes.iter_mut().find(|p| p.id == pane_id) {
+            let buffer_idx = pane.buffer_idx;
+
+            // Load document + diagnostics from buffer (but NOT cursor/view/history —
+            // those are pane-specific, not buffer-specific)
+            let buf = &mut self.buffers[buffer_idx];
+            self.document = std::mem::replace(&mut buf.document, Document::new_empty());
+            self.diagnostics = std::mem::take(&mut buf.diagnostics);
+            self.current_buffer = buffer_idx;
+
+            // Load pane-specific state (cursor, view, history, highlights, search, jump)
+            self.cursor = pane.cursor;
+            self.view = pane.view;
+            self.history = std::mem::replace(&mut pane.history, History::new());
+            self.syntax_tree = pane.syntax_tree.take();
+            self.line_styles = std::mem::take(&mut pane.line_styles);
+            self.styles_offset = pane.styles_offset;
+            self.search_query = std::mem::take(&mut pane.search_query);
+            self.search_matches = std::mem::take(&mut pane.search_matches);
+            self.search_index = pane.search_index;
+            self.search_regex = pane.search_regex.take();
+            self.search_start_cursor = pane.search_start_cursor.take();
+            self.jump_list = std::mem::take(&mut pane.jump_list);
+            self.jump_index = pane.jump_index;
+        }
+    }
+
+    pub fn split_pane(&mut self, direction: SplitDirection) -> Option<DeferredAction> {
+        self.save_active_pane();
+
+        let new_id = self.next_pane_id;
+        self.next_pane_id += 1;
+
+        // Create new pane with same buffer, cursor, and view as current
+        let current_pane = self.panes.iter().find(|p| p.id == self.active_pane_id);
+        let (buffer_idx, cursor, view) = match current_pane {
+            Some(p) => (p.buffer_idx, p.cursor, p.view),
+            None => (self.current_buffer, self.cursor, self.view),
+        };
+
+        let mut new_pane = Pane::new(new_id, buffer_idx);
+        new_pane.cursor = cursor;
+        new_pane.view = view;
+        self.panes.push(new_pane);
+
+        self.pane_layout.split(self.active_pane_id, new_id, direction);
+        self.load_pane(new_id);
+        None
+    }
+
+    pub fn close_pane(&mut self) -> Option<DeferredAction> {
+        if self.pane_layout.is_single() {
+            // Only one pane, behave like :q
+            return self.close_buffer();
+        }
+        self.save_active_pane();
+        let old_id = self.active_pane_id;
+        self.pane_layout.remove(old_id);
+        self.panes.retain(|p| p.id != old_id);
+
+        // Load an adjacent pane
+        let leaves = self.pane_layout.leaves();
+        if let Some(&next_id) = leaves.first() {
+            self.load_pane(next_id);
+        }
+        None
+    }
+
+    pub fn navigate_pane(&mut self, dir: NavigateDir) -> Option<DeferredAction> {
+        let rects = self.pane_layout.layout(self.editor_area);
+        if let Some(target_id) = self.pane_layout.find_adjacent(self.active_pane_id, dir, &rects) {
+            self.save_active_pane();
+            self.load_pane(target_id);
+        }
+        None
+    }
+
+    pub fn cycle_pane(&mut self) -> Option<DeferredAction> {
+        let leaves = self.pane_layout.leaves();
+        if leaves.len() <= 1 {
+            return None;
+        }
+        let current_pos = leaves.iter().position(|&id| id == self.active_pane_id).unwrap_or(0);
+        let next_pos = (current_pos + 1) % leaves.len();
+        let next_id = leaves[next_pos];
+        self.save_active_pane();
+        self.load_pane(next_id);
+        None
+    }
+
+    pub fn has_splits(&self) -> bool {
+        !self.pane_layout.is_single()
+    }
+
     /// Execute a command-mode command.
     /// Returns a deferred action for app.rs to handle async operations.
     pub fn command_execute(&mut self) -> Option<DeferredAction> {
@@ -3041,6 +3207,22 @@ impl Editor {
             return self.execute_substitute(trimmed);
         }
 
+        // Handle `:split <file>` and `:vsplit <file>`
+        if let Some(path) = trimmed.strip_prefix("split ").or_else(|| trimmed.strip_prefix("sp ")) {
+            let path = path.trim().to_string();
+            if !path.is_empty() {
+                self.split_pane(SplitDirection::Horizontal);
+                return Some(DeferredAction::OpenFile(path));
+            }
+        }
+        if let Some(path) = trimmed.strip_prefix("vsplit ").or_else(|| trimmed.strip_prefix("vs ")) {
+            let path = path.trim().to_string();
+            if !path.is_empty() {
+                self.split_pane(SplitDirection::Vertical);
+                return Some(DeferredAction::OpenFile(path));
+            }
+        }
+
         // Handle `:e <file>` to open a file
         if let Some(path) = trimmed.strip_prefix("e ") {
             let path = path.trim().to_string();
@@ -3075,6 +3257,9 @@ impl Editor {
                 }
             }
             "q" => {
+                if self.has_splits() {
+                    return self.close_pane();
+                }
                 if self.document.modified {
                     self.status_message =
                         Some("No write since last change (add ! to override)".to_string());
@@ -3083,6 +3268,18 @@ impl Editor {
                 }
             }
             "q!" => {
+                if self.has_splits() {
+                    // Force close pane even if modified
+                    let old_id = self.active_pane_id;
+                    self.save_active_pane();
+                    self.pane_layout.remove(old_id);
+                    self.panes.retain(|p| p.id != old_id);
+                    let leaves = self.pane_layout.leaves();
+                    if let Some(&next_id) = leaves.first() {
+                        self.load_pane(next_id);
+                    }
+                    return None;
+                }
                 self.should_quit = true;
             }
             "wq" | "x" => {
@@ -3093,6 +3290,9 @@ impl Editor {
                     return Some(DeferredAction::DidSave);
                 }
             }
+            // Split commands
+            "split" | "sp" => return self.split_pane(SplitDirection::Horizontal),
+            "vsplit" | "vs" => return self.split_pane(SplitDirection::Vertical),
             // Buffer commands
             "bn" | "bnext" => return self.next_buffer(),
             "bp" | "bprev" | "bprevious" => return self.prev_buffer(),
