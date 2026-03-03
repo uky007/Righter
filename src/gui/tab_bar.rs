@@ -6,7 +6,7 @@ use crate::editor::Editor;
 pub fn draw_tab_bar(editor: &Editor, ui: &mut Ui) {
     let rect = ui.available_rect_before_wrap();
     let painter = ui.painter_at(rect);
-    let font_size = 13.0;
+    let font_size = editor.config.gui_font_size - 1.0;
     let font = FontId::new(font_size, FontFamily::Monospace);
 
     // Background

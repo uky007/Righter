@@ -3616,6 +3616,21 @@ impl Editor {
                 self.view.offset_wrap = 0;
                 self.status_message = Some("wrap off".to_string());
             }
+            other if other.starts_with("set fontsize=") => {
+                let val = &other["set fontsize=".len()..];
+                match val.parse::<f32>() {
+                    Ok(size) if (8.0..=48.0).contains(&size) => {
+                        self.config.gui_font_size = size;
+                        self.status_message = Some(format!("font size: {size}"));
+                    }
+                    Ok(size) => {
+                        self.status_message = Some(format!("Font size must be between 8 and 48 (got {size})"));
+                    }
+                    Err(_) => {
+                        self.status_message = Some(format!("Invalid font size: {val}"));
+                    }
+                }
+            }
             other => {
                 self.status_message = Some(format!("Unknown command: {other}"));
             }

@@ -63,6 +63,7 @@ cargo run --features gui --bin righter-gui -- <filepath>
 - `gt/gT` or `:bn/:bp` to switch buffers
 - `Ctrl-P` for fuzzy file finder
 - `:set wrap` / `:set nowrap` to toggle line wrapping
+- `:set fontsize=N` to change GUI font size (8–48, default 14)
 
 ## Architecture
 

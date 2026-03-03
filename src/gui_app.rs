@@ -756,7 +756,7 @@ impl eframe::App for GuiApp {
 
         // Update viewport dimensions
         let avail = ctx.available_rect();
-        let font_size = 14.0;
+        let font_size = self.editor.config.gui_font_size;
         let char_width = font_size * 0.6;
         let line_height = font_size * 1.4;
         let cols = (avail.width() / char_width) as u16;
