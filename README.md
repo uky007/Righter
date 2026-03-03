@@ -65,6 +65,12 @@ cargo run --features gui --bin righter-gui -- <filepath>
 - `:set wrap` / `:set nowrap` to toggle line wrapping
 - `:set fontsize=N` to change GUI font size (8–48, default 14)
 
+### GUI Mouse Support
+
+- Click to position cursor in the editor area
+- Scroll wheel to scroll the viewport
+- Click on a split pane to switch focus
+
 ## Architecture
 
 ```text
@@ -130,6 +136,7 @@ cargo run --features gui --bin righter-gui -- <filepath>
 - 検索・置換（正規表現、インクリメンタル検索、スマートケース）
 - LSP統合（補完、定義ジャンプ、ホバー、参照検索、診断、コードアクション、リネーム、フォーマット）
 - ペイン分割・バッファ切替・ファイルファインダー
+- GUI版: マウス操作（クリックでカーソル移動、スクロール、ペインフォーカス切替）
 
 ### 制限事項
 

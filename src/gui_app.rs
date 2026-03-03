@@ -18,6 +18,8 @@ pub struct GuiApp {
     lsp_tx: std_mpsc::Sender<LspMessage>,
     file_uri: Option<String>,
     last_notified_version: i64,
+    /// Pane pixel rects from last frame, used for mouse hit-testing.
+    last_pane_rects: Vec<(usize, egui::Rect)>,
 }
 
 impl GuiApp {
@@ -38,6 +40,7 @@ impl GuiApp {
             lsp_tx,
             file_uri: None,
             last_notified_version: 0,
+            last_pane_rects: Vec::new(),
         };
 
         // Start LSP
@@ -408,6 +411,107 @@ impl GuiApp {
             DeferredAction::FormatDocument => { self.request_formatting(); }
             DeferredAction::PlayMacro(ch) => { self.play_macro(ch); }
         }
+    }
+
+    fn handle_mouse(&mut self, ctx: &egui::Context) {
+        let font_size = self.editor.config.gui_font_size;
+        let char_width = font_size * 0.6;
+        let line_height = font_size * 1.4;
+
+        // --- Scroll wheel ---
+        let scroll_delta = ctx.input(|i| i.smooth_scroll_delta);
+        if scroll_delta.y.abs() > 0.1 {
+            let lines = (scroll_delta.y.abs() / line_height).ceil() as usize;
+            let lines = lines.max(3);
+            if scroll_delta.y > 0.0 {
+                self.editor.scroll_viewport_up(lines);
+            } else {
+                self.editor.scroll_viewport_down(lines);
+            }
+            ctx.request_repaint();
+        }
+
+        // --- Click ---
+        let clicked = ctx.input(|i| i.pointer.primary_clicked());
+        if !clicked {
+            return;
+        }
+        let click_pos = match ctx.input(|i| i.pointer.interact_pos()) {
+            Some(pos) => pos,
+            None => return,
+        };
+
+        // Ignore clicks while popups are showing
+        if self.editor.showing_completion
+            || self.editor.showing_hover
+            || self.editor.showing_references
+            || self.editor.showing_code_actions
+            || self.editor.showing_diagnostics
+            || self.editor.showing_file_finder
+        {
+            return;
+        }
+
+        // Find which pane was clicked
+        let clicked_pane = self.last_pane_rects.iter().find(|(_, rect)| rect.contains(click_pos));
+        let (pane_id, pane_rect) = match clicked_pane {
+            Some(&(id, rect)) => (id, rect),
+            None => return,
+        };
+
+        // Switch pane focus if needed
+        if pane_id != self.editor.active_pane_id {
+            self.editor.save_active_pane();
+            self.editor.load_pane(pane_id);
+            self.sync_file_uri();
+        }
+
+        // Determine the editor area (pane minus status line)
+        let gutter_width = self.editor.gutter_width();
+        let gutter_px = gutter_width as f32 * char_width;
+        let editor_rows = (self.editor.view.height) as f32 * line_height;
+        let editor_area_bottom = pane_rect.min.y + editor_rows;
+
+        // Click on status line → just focus the pane (already done above)
+        if click_pos.y >= editor_area_bottom {
+            ctx.request_repaint();
+            return;
+        }
+
+        // Click on gutter → ignore
+        if click_pos.x < pane_rect.min.x + gutter_px {
+            ctx.request_repaint();
+            return;
+        }
+
+        // Convert pixel position to screen coordinates
+        let screen_col_f = (click_pos.x - pane_rect.min.x - gutter_px) / char_width;
+        let screen_row_f = (click_pos.y - pane_rect.min.y) / line_height;
+        let screen_col = screen_col_f.max(0.0) as usize;
+        let screen_row = screen_row_f.max(0.0) as usize;
+
+        // Convert screen coordinates to document coordinates
+        if self.editor.config.wrap {
+            let text_width = self.editor.view.width.saturating_sub(gutter_width);
+            let screen_map = crate::editor::wrap::build_screen_map(
+                &self.editor.document.rope,
+                self.editor.view.offset_row,
+                self.editor.view.offset_wrap,
+                text_width,
+                self.editor.view.height,
+            );
+            if let Some(seg) = screen_map.get(screen_row) {
+                self.editor.cursor.row = seg.doc_row;
+                self.editor.cursor.col = seg.char_start + screen_col;
+            }
+        } else {
+            self.editor.cursor.row = self.editor.view.offset_row + screen_row;
+            self.editor.cursor.col = self.editor.view.offset_col + screen_col;
+        }
+
+        self.editor.clamp_cursor();
+        self.editor.scroll();
+        ctx.request_repaint();
     }
 
     fn play_macro(&mut self, ch: char) {
@@ -785,8 +889,11 @@ impl eframe::App for GuiApp {
         self.editor.scroll();
         self.editor.update_highlights();
 
-        // Render
-        crate::gui::render(&self.editor, ctx);
+        // Handle mouse input (uses pane rects from previous frame)
+        self.handle_mouse(ctx);
+
+        // Render and save pane rects for next frame's mouse handling
+        self.last_pane_rects = crate::gui::render(&self.editor, ctx);
 
         // Quit
         if self.editor.should_quit {

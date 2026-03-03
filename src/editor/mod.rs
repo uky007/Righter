@@ -3152,6 +3152,29 @@ impl Editor {
         }
     }
 
+    pub fn scroll_viewport_down(&mut self, n: usize) {
+        if self.config.wrap {
+            let text_width = self.text_width();
+            self.view.scroll_down_by(n, &self.document.rope, text_width);
+        } else {
+            let max = self.document.line_count().saturating_sub(self.view.height as usize);
+            self.view.offset_row = (self.view.offset_row + n).min(max);
+        }
+        self.scroll();
+        self.clamp_cursor();
+    }
+
+    pub fn scroll_viewport_up(&mut self, n: usize) {
+        if self.config.wrap {
+            let text_width = self.text_width();
+            self.view.scroll_up_by(n, &self.document.rope, text_width);
+        } else {
+            self.view.offset_row = self.view.offset_row.saturating_sub(n);
+        }
+        self.scroll();
+        self.clamp_cursor();
+    }
+
     pub fn full_page_down(&mut self) {
         if self.config.wrap {
             self.move_screen_lines_down(self.view.height as usize);

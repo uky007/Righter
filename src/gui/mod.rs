@@ -30,7 +30,8 @@ use self::tab_bar::draw_tab_bar;
 const BG_COLOR: Color32 = Color32::from_rgb(40, 44, 52);
 
 /// Render the full editor UI using egui.
-pub fn render(editor: &Editor, ctx: &egui::Context) {
+/// Returns pane pixel rects for mouse hit-testing: Vec<(pane_id, egui::Rect)>.
+pub fn render(editor: &Editor, ctx: &egui::Context) -> Vec<(usize, egui::Rect)> {
     let show_tabs = editor.buffers.len() > 1;
 
     // Tab bar at top
@@ -46,6 +47,8 @@ pub fn render(editor: &Editor, ctx: &egui::Context) {
     });
 
     // Main editor area
+    let mut collected_pane_rects: Vec<(usize, egui::Rect)> = Vec::new();
+
     CentralPanel::default()
         .frame(EguiFrame::new().fill(BG_COLOR).inner_margin(Margin::ZERO))
         .show(ctx, |ui| {
@@ -78,6 +81,8 @@ pub fn render(editor: &Editor, ctx: &egui::Context) {
                         arect.height as f32 * line_height,
                     ),
                 );
+
+                collected_pane_rects.push((pane_id, pane_rect));
 
                 let editor_rows = arect.height.saturating_sub(1);
                 let editor_rect = egui::Rect::from_min_size(
@@ -118,4 +123,6 @@ pub fn render(editor: &Editor, ctx: &egui::Context) {
             draw_diagnostics(editor, ui, popup_rect, char_width, line_height);
             draw_file_finder(editor, ui, popup_rect, char_width, line_height);
         });
+
+    collected_pane_rects
 }

@@ -154,7 +154,7 @@ impl View {
     }
 
     /// Scroll the viewport down by `n` screen lines.
-    fn scroll_down_by(&mut self, n: usize, rope: &Rope, text_width: u16) {
+    pub(crate) fn scroll_down_by(&mut self, n: usize, rope: &Rope, text_width: u16) {
         let line_count = rope.len_lines();
         let mut remaining = n;
 
@@ -175,7 +175,7 @@ impl View {
     }
 
     /// Scroll the viewport up by `n` screen lines.
-    fn scroll_up_by(&mut self, n: usize, rope: &Rope, text_width: u16) {
+    pub(crate) fn scroll_up_by(&mut self, n: usize, rope: &Rope, text_width: u16) {
         let mut remaining = n;
 
         while remaining > 0 {
