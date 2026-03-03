@@ -193,16 +193,21 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(document: Document) -> Self {
+        Self::with_config(document, Config::default())
+    }
+
+    pub fn with_config(document: Document, config: Config) -> Self {
+        let wrap = config.wrap;
         Self {
             document,
-            view: View::default(),
+            view: View { wrap, ..View::default() },
             cursor: Position::default(),
             mode: Mode::Normal,
             command_buffer: String::new(),
             pending_keys: Vec::new(),
             should_quit: false,
             status_message: None,
-            config: Config::default(),
+            config,
             history: History::new(),
             visual_anchor: None,
             highlighter: Highlighter::new(),
@@ -3651,6 +3656,30 @@ impl Editor {
                     }
                     Err(_) => {
                         self.status_message = Some(format!("Invalid font size: {val}"));
+                    }
+                }
+            }
+            other if other.starts_with("set scrolloff=") => {
+                let val = &other["set scrolloff=".len()..];
+                match val.parse::<usize>() {
+                    Ok(n) if n <= 999 => {
+                        self.config.scroll_off = n;
+                        self.status_message = Some(format!("scrolloff={n}"));
+                    }
+                    _ => {
+                        self.status_message = Some(format!("Invalid scrolloff: {val}"));
+                    }
+                }
+            }
+            other if other.starts_with("set tabstop=") => {
+                let val = &other["set tabstop=".len()..];
+                match val.parse::<usize>() {
+                    Ok(n) if (1..=16).contains(&n) => {
+                        self.config.tab_width = n;
+                        self.status_message = Some(format!("tabstop={n}"));
+                    }
+                    _ => {
+                        self.status_message = Some(format!("Invalid tabstop: {val}"));
                     }
                 }
             }

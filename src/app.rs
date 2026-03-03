@@ -9,6 +9,7 @@ use ratatui::Terminal;
 use ratatui::prelude::CrosstermBackend;
 use tokio::sync::mpsc;
 
+use crate::config::ConfigLoadResult;
 use crate::editor::{DeferredAction, Editor};
 use crate::editor::document::Document;
 use crate::editor::pane::AreaRect;
@@ -29,7 +30,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(path: Option<String>) -> Result<Self> {
+    pub fn new(path: Option<String>, config_result: ConfigLoadResult) -> Result<Self> {
         let document = match path {
             Some(p) => Document::open(&p)?,
             None => Document::new_empty(),
@@ -37,8 +38,13 @@ impl App {
 
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
+        let mut editor = Editor::with_config(document, config_result.config);
+        if let Some(warning) = config_result.warning {
+            editor.status_message = Some(warning);
+        }
+
         Ok(Self {
-            editor: Editor::new(document),
+            editor,
             lsp_client: None,
             event_rx,
             event_tx,

@@ -12,6 +12,7 @@ use anyhow::Result;
 
 fn main() -> Result<()> {
     let path = std::env::args().nth(1);
+    let config_result = config::Config::load();
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -23,7 +24,7 @@ fn main() -> Result<()> {
     eframe::run_native(
         "Righter",
         native_options,
-        Box::new(move |cc| Ok(Box::new(gui_app::GuiApp::new(cc, path)))),
+        Box::new(move |cc| Ok(Box::new(gui_app::GuiApp::new(cc, path, config_result)))),
     )
     .map_err(|e| anyhow::anyhow!("{e}"))
 }

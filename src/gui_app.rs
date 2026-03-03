@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::mpsc as std_mpsc;
 
+use crate::config::ConfigLoadResult;
 use crate::editor::{DeferredAction, Editor};
 use crate::editor::document::Document;
 use crate::editor::pane::AreaRect;
@@ -23,7 +24,7 @@ pub struct GuiApp {
 }
 
 impl GuiApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>, path: Option<String>) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>, path: Option<String>, config_result: ConfigLoadResult) -> Self {
         let document = match path {
             Some(ref p) => Document::open(p).unwrap_or_else(|_| Document::new_empty()),
             None => Document::new_empty(),
@@ -32,8 +33,13 @@ impl GuiApp {
         let (lsp_tx, lsp_rx) = std_mpsc::channel();
         let runtime = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
 
+        let mut editor = Editor::with_config(document, config_result.config);
+        if let Some(warning) = config_result.warning {
+            editor.status_message = Some(warning);
+        }
+
         let mut app = Self {
-            editor: Editor::new(document),
+            editor,
             runtime,
             lsp_client: None,
             lsp_rx,

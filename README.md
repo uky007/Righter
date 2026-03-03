@@ -64,6 +64,20 @@ cargo run --features gui --bin righter-gui -- <filepath>
 - `Ctrl-P` for fuzzy file finder
 - `:set wrap` / `:set nowrap` to toggle line wrapping
 - `:set fontsize=N` to change GUI font size (8–48, default 14)
+- `:set scrolloff=N` / `:set tabstop=N` to adjust scroll offset and tab width
+
+### Configuration
+
+Settings are read from `~/.config/righter/config.json` (`$XDG_CONFIG_HOME` preferred) at startup. All fields are optional; missing fields use defaults. The file is read-only — `:set` changes are session-local.
+
+```json
+{
+  "scroll_off": 8,
+  "wrap": true,
+  "font_size": 16.0,
+  "tab_width": 4
+}
+```
 
 ### GUI Mouse Support
 
@@ -137,6 +151,19 @@ cargo run --features gui --bin righter-gui -- <filepath>
 - LSP統合（補完、定義ジャンプ、ホバー、参照検索、診断、コードアクション、リネーム、フォーマット）
 - ペイン分割・バッファ切替・ファイルファインダー
 - GUI版: マウス操作（クリックでカーソル移動、スクロール、ペインフォーカス切替）
+
+### 設定ファイル
+
+`~/.config/righter/config.json`（`$XDG_CONFIG_HOME` 優先）を起動時に読み込みます。全フィールド省略可、ファイルなしでも正常起動します。`:set` による変更はセッション内のみ有効です。
+
+```json
+{
+  "scroll_off": 8,
+  "wrap": true,
+  "font_size": 16.0,
+  "tab_width": 4
+}
+```
 
 ### 制限事項
 

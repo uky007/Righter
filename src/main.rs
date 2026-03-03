@@ -33,8 +33,11 @@ async fn main() -> Result<()> {
     // Get file path from args
     let path = std::env::args().nth(1);
 
+    // Load config
+    let config_result = config::Config::load();
+
     // Run app
-    let mut app = app::App::new(path)?;
+    let mut app = app::App::new(path, config_result)?;
     let result = app.run(&mut terminal).await;
 
     // Restore terminal
