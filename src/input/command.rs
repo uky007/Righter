@@ -212,6 +212,15 @@ pub enum Command {
     MoveDocumentLineDown,
     MoveDocumentLineUp,
 
+    // Workspace symbol search
+    WorkspaceSymbol,
+    WorkspaceSymbolInput(char),
+    WorkspaceSymbolBackspace,
+    WorkspaceSymbolConfirm,
+    WorkspaceSymbolCancel,
+    WorkspaceSymbolNext,
+    WorkspaceSymbolPrev,
+
     // Window split
     SplitHorizontal,
     SplitVertical,

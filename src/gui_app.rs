@@ -225,6 +225,17 @@ impl GuiApp {
                     return;
                 }
 
+                // Workspace symbols
+                if Some(id) == self.editor.pending_workspace_symbol_id {
+                    self.editor.pending_workspace_symbol_id = None;
+                    if let Some(result) = result {
+                        let symbols = lsp::parse_workspace_symbols(&result);
+                        self.editor.workspace_symbol_results = symbols;
+                        self.editor.workspace_symbol_index = 0;
+                    }
+                    return;
+                }
+
                 // Rename
                 if Some(id) == self.editor.pending_rename_id {
                     self.editor.pending_rename_id = None;
@@ -349,6 +360,8 @@ impl GuiApp {
             let trigger_file_finder = matches!(cmd, Command::OpenFileFinder);
             let trigger_code_action = matches!(cmd, Command::CodeAction);
             let trigger_code_action_accept = matches!(cmd, Command::CodeActionAccept);
+            let trigger_ws_symbol = matches!(cmd, Command::WorkspaceSymbol);
+            let trigger_ws_confirm = matches!(cmd, Command::WorkspaceSymbolConfirm);
 
             if !matches!(
                 cmd,
@@ -375,6 +388,16 @@ impl GuiApp {
             }
             if trigger_code_action { self.request_code_action(); }
             if trigger_code_action_accept { self.accept_code_action(); }
+            if trigger_ws_symbol {
+                self.editor.open_workspace_symbols();
+            }
+            if trigger_ws_confirm {
+                self.jump_to_workspace_symbol();
+            }
+            if self.editor.workspace_symbol_needs_request {
+                self.editor.workspace_symbol_needs_request = false;
+                self.request_workspace_symbols();
+            }
 
             // Handle deferred actions
             if let Some(action) = deferred {
@@ -454,6 +477,7 @@ impl GuiApp {
             || self.editor.showing_code_actions
             || self.editor.showing_diagnostics
             || self.editor.showing_file_finder
+            || self.editor.showing_workspace_symbols
         {
             return;
         }
@@ -617,6 +641,44 @@ impl GuiApp {
             let character = self.editor.cursor.col as u32;
             if let Ok(id) = self.runtime.block_on(lsp.rename(uri, line, character, new_name)) {
                 self.editor.pending_rename_id = Some(id);
+            }
+        }
+    }
+
+    fn request_workspace_symbols(&mut self) {
+        if let Some(lsp) = &mut self.lsp_client {
+            if !lsp.initialized { return; }
+            let query = self.editor.workspace_symbol_query.clone();
+            if let Ok(id) = self.runtime.block_on(lsp.workspace_symbol(&query)) {
+                self.editor.pending_workspace_symbol_id = Some(id);
+            }
+        }
+    }
+
+    fn jump_to_workspace_symbol(&mut self) {
+        if let Some(sym) = self.editor.workspace_symbol_selected() {
+            self.editor.workspace_symbol_cancel();
+            self.editor.push_jump();
+            let current_uri = self.file_uri.as_deref().unwrap_or("");
+            if sym.uri == current_uri {
+                self.editor.cursor.row = sym.start_line as usize;
+                self.editor.cursor.col = sym.start_col as usize;
+                self.editor.clamp_cursor();
+                self.editor.scroll();
+            } else if let Some(path) = lsp::uri_to_path(&sym.uri) {
+                let target_line = sym.start_line;
+                let target_col = sym.start_col;
+                self.open_file(&path);
+                self.editor.cursor.row = target_line as usize;
+                self.editor.cursor.col = target_col as usize;
+                self.editor.clamp_cursor();
+                self.editor.scroll();
+            } else {
+                let name = sym.uri.rsplit('/').next().unwrap_or(&sym.uri);
+                self.editor.status_message = Some(format!(
+                    "Symbol in {}:{}:{}",
+                    name, sym.start_line + 1, sym.start_col + 1
+                ));
             }
         }
     }
@@ -945,6 +1007,7 @@ fn egui_key_to_key_input(key: egui::Key, modifiers: egui::Modifiers) -> Option<K
                 egui::Key::O => Some(KeyCode::Char('o')),
                 egui::Key::P => Some(KeyCode::Char('p')),
                 egui::Key::R => Some(KeyCode::Char('r')),
+                egui::Key::T => Some(KeyCode::Char('t')),
                 egui::Key::U => Some(KeyCode::Char('u')),
                 egui::Key::W => Some(KeyCode::Char('w')),
                 egui::Key::X => Some(KeyCode::Char('x')),

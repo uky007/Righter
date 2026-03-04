@@ -3,7 +3,7 @@
 A Vim-like text editor written in Rust.
 Righter uses a shared editor core with two frontends: TUI (terminal) and GUI (desktop window).
 
-With rust-analyzer LSP integration, it supports completion, go-to-definition, hover, references, diagnostics, code actions, rename, and formatting.
+With rust-analyzer LSP integration, it supports completion, go-to-definition, hover, references, diagnostics, code actions, rename, formatting, and workspace symbol search.
 
 ## Requirements
 
@@ -53,6 +53,7 @@ cargo run --features gui --bin righter-gui -- <filepath>
 | `ga` | Code actions |
 | `gE` | Diagnostics list |
 | `]d` / `[d` | Next/previous diagnostic |
+| `Ctrl-T` | Workspace symbol search |
 | `:rename <name>` | Rename symbol |
 | `:format` | Format document |
 
@@ -61,7 +62,7 @@ cargo run --features gui --bin righter-gui -- <filepath>
 - `Ctrl-W v/s` to split panes (vertical/horizontal), `:split` / `:vsplit` with optional file
 - `Ctrl-W h/j/k/l` to move between panes, `Ctrl-W q` to close a pane
 - `gt/gT` or `:bn/:bp` to switch buffers
-- `Ctrl-P` for fuzzy file finder
+- `Ctrl-P` for fuzzy file finder, `Ctrl-T` for workspace symbol search
 - `:set wrap` / `:set nowrap` to toggle line wrapping
 - `:set fontsize=N` to change GUI font size (8–48, default 14)
 - `:set scrolloff=N` / `:set tabstop=N` to adjust scroll offset and tab width
@@ -125,7 +126,7 @@ MIT
 Rust製のVimライクテキストエディタ。
 同一のエディタコアを TUI（ターミナル）と GUI（デスクトップウィンドウ）の2つのフロントエンドで共有する設計です。
 
-rust-analyzer との LSP 統合により、補完・定義ジャンプ・ホバー・参照検索・診断・コードアクション・リネーム・フォーマットをサポートします。
+rust-analyzer との LSP 統合により、補完・定義ジャンプ・ホバー・参照検索・診断・コードアクション・リネーム・フォーマット・ワークスペースシンボル検索をサポートします。
 
 ### 必要環境
 
@@ -148,8 +149,8 @@ cargo run --features gui --bin righter-gui -- <filepath>
 
 - Vim操作（モード/モーション/演算子/マクロ/レジスタ）
 - 検索・置換（正規表現、インクリメンタル検索、スマートケース）
-- LSP統合（補完、定義ジャンプ、ホバー、参照検索、診断、コードアクション、リネーム、フォーマット）
-- ペイン分割・バッファ切替・ファイルファインダー
+- LSP統合（補完、定義ジャンプ、ホバー、参照検索、診断、コードアクション、リネーム、フォーマット、ワークスペースシンボル検索）
+- ペイン分割・バッファ切替・ファイルファインダー・ワークスペースシンボル検索
 - GUI版: マウス操作（クリックでカーソル移動、スクロール、ペインフォーカス切替）
 
 ### 設定ファイル

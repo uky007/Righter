@@ -10,6 +10,11 @@ pub fn map_key(editor: &mut Editor, key: KeyInput) -> Option<Command> {
         return map_file_finder(key);
     }
 
+    // Workspace symbol search intercepts all keys when showing
+    if editor.showing_workspace_symbols {
+        return map_workspace_symbols(key);
+    }
+
     match editor.mode {
         Mode::Normal => map_normal(editor, key),
         Mode::Insert => map_insert(editor, key),
@@ -68,6 +73,7 @@ fn map_normal(editor: &mut Editor, key: KeyInput) -> Option<Command> {
             KeyCode::Char('b') => return Some(Command::FullPageUp),
             KeyCode::Char('r') => return Some(Command::Redo),
             KeyCode::Char('p') => return Some(Command::OpenFileFinder),
+            KeyCode::Char('t') => return Some(Command::WorkspaceSymbol),
             KeyCode::Char('o') => return Some(Command::JumpBack),
             KeyCode::Char('i') => return Some(Command::JumpForward),
             KeyCode::Char('a') => return Some(Command::IncrementNumber),
@@ -573,6 +579,20 @@ fn map_search(key: KeyInput) -> Option<Command> {
         KeyCode::Enter => Some(Command::SearchConfirm),
         KeyCode::Backspace => Some(Command::SearchBackspace),
         KeyCode::Char(ch) => Some(Command::SearchInput(ch)),
+        _ => None,
+    }
+}
+
+fn map_workspace_symbols(key: KeyInput) -> Option<Command> {
+    match key.code {
+        KeyCode::Esc => Some(Command::WorkspaceSymbolCancel),
+        KeyCode::Enter => Some(Command::WorkspaceSymbolConfirm),
+        KeyCode::Backspace => Some(Command::WorkspaceSymbolBackspace),
+        KeyCode::Down | KeyCode::Tab => Some(Command::WorkspaceSymbolNext),
+        KeyCode::Up | KeyCode::BackTab => Some(Command::WorkspaceSymbolPrev),
+        KeyCode::Char('n') if key.ctrl => Some(Command::WorkspaceSymbolNext),
+        KeyCode::Char('p') if key.ctrl => Some(Command::WorkspaceSymbolPrev),
+        KeyCode::Char(ch) => Some(Command::WorkspaceSymbolInput(ch)),
         _ => None,
     }
 }

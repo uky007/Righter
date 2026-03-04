@@ -8,6 +8,7 @@ pub mod hover;
 pub mod references;
 pub mod status_line;
 pub mod tab_bar;
+pub mod workspace_symbols;
 
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -24,6 +25,7 @@ use self::editor_view::EditorView;
 use self::file_finder::FileFinderPopup;
 use self::hover::HoverPopup;
 use self::references::ReferencesPopup;
+use self::workspace_symbols::WorkspaceSymbolsPopup;
 use self::status_line::StatusLine;
 use self::tab_bar::TabBar;
 
@@ -106,6 +108,7 @@ pub fn render(editor: &Editor, frame: &mut Frame) {
     frame.render_widget(CodeActionsPopup::new(editor), active_pane_rect);
     frame.render_widget(DiagnosticsPopup::new(editor), active_pane_rect);
     frame.render_widget(FileFinderPopup::new(editor), active_pane_rect);
+    frame.render_widget(WorkspaceSymbolsPopup::new(editor), active_pane_rect);
     frame.render_widget(CommandLine::new(editor), chunks[2]);
 }
 

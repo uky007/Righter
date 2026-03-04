@@ -12,7 +12,7 @@ use crate::highlight::style::SyntaxStyle;
 use crate::input::command::Motion;
 use crate::input::mode::Mode;
 use crate::key::KeyInput;
-use crate::lsp::{LspCodeAction, LspCompletionItem, LspDiagnostic, LspLocation};
+use crate::lsp::{self, LspCodeAction, LspCompletionItem, LspDiagnostic, LspLocation};
 
 use self::document::Document;
 use self::history::History;
@@ -183,6 +183,13 @@ pub struct Editor {
     // Phase 11: Diagnostics list
     pub showing_diagnostics: bool,
     pub diagnostic_list_index: usize,
+    // Workspace symbol search
+    pub showing_workspace_symbols: bool,
+    pub workspace_symbol_query: String,
+    pub workspace_symbol_results: Vec<lsp::LspSymbolInfo>,
+    pub workspace_symbol_index: usize,
+    pub pending_workspace_symbol_id: Option<i64>,
+    pub workspace_symbol_needs_request: bool,
     // Window split (panes)
     pub panes: Vec<Pane>,
     pub active_pane_id: usize,
@@ -262,6 +269,12 @@ impl Editor {
             pending_code_action_id: None,
             showing_diagnostics: false,
             diagnostic_list_index: 0,
+            showing_workspace_symbols: false,
+            workspace_symbol_query: String::new(),
+            workspace_symbol_results: Vec::new(),
+            workspace_symbol_index: 0,
+            pending_workspace_symbol_id: None,
+            workspace_symbol_needs_request: false,
             panes: vec![Pane::new(0, 0)],
             active_pane_id: 0,
             pane_layout: PaneNode::Leaf(0),
@@ -2062,6 +2075,7 @@ impl Editor {
         self.reference_index = 0;
         self.dismiss_code_actions();
         self.dismiss_diagnostics_list();
+        self.workspace_symbol_cancel();
     }
 
     pub fn reference_next(&mut self) {
@@ -3337,6 +3351,59 @@ impl Editor {
                 .collect();
         }
         self.file_finder_index = 0;
+    }
+
+    // --- Workspace symbol search ---
+
+    pub fn open_workspace_symbols(&mut self) {
+        self.workspace_symbol_query.clear();
+        self.workspace_symbol_results.clear();
+        self.workspace_symbol_index = 0;
+        self.workspace_symbol_needs_request = false;
+        self.showing_workspace_symbols = true;
+    }
+
+    pub fn workspace_symbol_input(&mut self, ch: char) {
+        self.workspace_symbol_query.push(ch);
+        self.workspace_symbol_needs_request = true;
+    }
+
+    pub fn workspace_symbol_backspace(&mut self) {
+        self.workspace_symbol_query.pop();
+        self.workspace_symbol_needs_request = true;
+    }
+
+    pub fn workspace_symbol_next(&mut self) {
+        if !self.workspace_symbol_results.is_empty() {
+            self.workspace_symbol_index =
+                (self.workspace_symbol_index + 1) % self.workspace_symbol_results.len();
+        }
+    }
+
+    pub fn workspace_symbol_prev(&mut self) {
+        if !self.workspace_symbol_results.is_empty() {
+            self.workspace_symbol_index = if self.workspace_symbol_index == 0 {
+                self.workspace_symbol_results.len() - 1
+            } else {
+                self.workspace_symbol_index - 1
+            };
+        }
+    }
+
+    pub fn workspace_symbol_selected(&self) -> Option<lsp::LspSymbolInfo> {
+        if self.workspace_symbol_results.is_empty() {
+            None
+        } else {
+            Some(self.workspace_symbol_results[self.workspace_symbol_index].clone())
+        }
+    }
+
+    pub fn workspace_symbol_cancel(&mut self) {
+        self.showing_workspace_symbols = false;
+        self.workspace_symbol_query.clear();
+        self.workspace_symbol_results.clear();
+        self.workspace_symbol_index = 0;
+        self.workspace_symbol_needs_request = false;
     }
 
     /// Get diagnostic message for the current cursor line.

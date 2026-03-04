@@ -202,6 +202,15 @@ pub fn execute(editor: &mut Editor, cmd: Command) -> Option<DeferredAction> {
         Command::FullPageDown => editor.full_page_down(),
         Command::FullPageUp => editor.full_page_up(),
 
+        // Workspace symbol search (async parts handled by app.rs)
+        Command::WorkspaceSymbol => {}
+        Command::WorkspaceSymbolInput(ch) => editor.workspace_symbol_input(ch),
+        Command::WorkspaceSymbolBackspace => editor.workspace_symbol_backspace(),
+        Command::WorkspaceSymbolConfirm => {}  // handled by app.rs
+        Command::WorkspaceSymbolCancel => editor.workspace_symbol_cancel(),
+        Command::WorkspaceSymbolNext => editor.workspace_symbol_next(),
+        Command::WorkspaceSymbolPrev => editor.workspace_symbol_prev(),
+
         // File finder (async parts handled by app.rs)
         Command::OpenFileFinder => {}
         Command::FileFinderInput(ch) => editor.file_finder_input(ch),

@@ -8,6 +8,7 @@ pub mod code_actions;
 pub mod diagnostics;
 pub mod file_finder;
 pub mod tab_bar;
+pub mod workspace_symbols;
 
 use egui::{CentralPanel, TopBottomPanel, Color32, Frame as EguiFrame, Margin};
 
@@ -25,6 +26,7 @@ use self::code_actions::draw_code_actions;
 use self::diagnostics::draw_diagnostics;
 use self::file_finder::draw_file_finder;
 use self::tab_bar::draw_tab_bar;
+use self::workspace_symbols::draw_workspace_symbols;
 
 /// One Dark background color.
 const BG_COLOR: Color32 = Color32::from_rgb(40, 44, 52);
@@ -122,6 +124,7 @@ pub fn render(editor: &Editor, ctx: &egui::Context) -> Vec<(usize, egui::Rect)> 
             draw_code_actions(editor, ui, popup_rect, char_width, line_height);
             draw_diagnostics(editor, ui, popup_rect, char_width, line_height);
             draw_file_finder(editor, ui, popup_rect, char_width, line_height);
+            draw_workspace_symbols(editor, ui, popup_rect, char_width, line_height);
         });
 
     collected_pane_rects

@@ -97,6 +97,15 @@ pub struct LspCodeAction {
 }
 
 #[derive(Debug, Clone)]
+pub struct LspSymbolInfo {
+    pub name: String,
+    pub kind: u32,
+    pub uri: String,
+    pub start_line: u32,
+    pub start_col: u32,
+}
+
+#[derive(Debug, Clone)]
 pub struct LspWorkspaceEdit {
     pub uri: String,
     pub edits: Vec<LspTextEdit>,
@@ -382,6 +391,16 @@ impl LspClient {
                 "context": {
                     "diagnostics": diag_array
                 }
+            }),
+        )
+        .await
+    }
+
+    pub async fn workspace_symbol(&mut self, query: &str) -> Result<i64> {
+        self.send_request(
+            "workspace/symbol",
+            json!({
+                "query": query
             }),
         )
         .await
@@ -685,6 +704,62 @@ pub fn parse_code_actions(result: &Value) -> Vec<LspCodeAction> {
             })
         })
         .collect()
+}
+
+/// Parse a workspace/symbol response into our symbol info type.
+pub fn parse_workspace_symbols(result: &Value) -> Vec<LspSymbolInfo> {
+    let mut out = Vec::new();
+    if let Some(arr) = result.as_array() {
+        for item in arr {
+            let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+            let kind = item.get("kind").and_then(|k| k.as_u64()).unwrap_or(1) as u32;
+            if let Some(loc) = item.get("location") {
+                let uri = loc.get("uri").and_then(|u| u.as_str()).unwrap_or("").to_string();
+                if let Some(range) = loc.get("range") {
+                    let start = &range["start"];
+                    out.push(LspSymbolInfo {
+                        name: name.to_string(),
+                        kind,
+                        uri,
+                        start_line: start["line"].as_u64().unwrap_or(0) as u32,
+                        start_col: start["character"].as_u64().unwrap_or(0) as u32,
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Map LSP SymbolKind to a display label.
+pub fn symbol_kind_label(kind: u32) -> &'static str {
+    match kind {
+        1 => "file",
+        2 => "mod",
+        3 => "ns",
+        4 => "pkg",
+        5 => "class",
+        6 => "fn",    // Method
+        7 => "prop",
+        8 => "field",
+        9 => "ctor",
+        10 => "enum",
+        11 => "iface",
+        12 => "fn",
+        13 => "var",
+        14 => "const",
+        15 => "str",
+        16 => "num",
+        17 => "bool",
+        18 => "arr",
+        19 => "obj",
+        22 => "enum",  // EnumMember
+        23 => "struct",
+        24 => "event",
+        25 => "op",
+        26 => "type",
+        _ => "sym",
+    }
 }
 
 /// Parse a completion response into our completion item type.

@@ -164,6 +164,8 @@ impl App {
                                 let trigger_file_finder = matches!(cmd, Command::OpenFileFinder);
                                 let trigger_code_action = matches!(cmd, Command::CodeAction);
                                 let trigger_code_action_accept = matches!(cmd, Command::CodeActionAccept);
+                                let trigger_ws_symbol = matches!(cmd, Command::WorkspaceSymbol);
+                                let trigger_ws_confirm = matches!(cmd, Command::WorkspaceSymbolConfirm);
 
                                 // Dismiss completion on non-completion input
                                 if !matches!(
@@ -204,6 +206,17 @@ impl App {
                                 }
                                 if trigger_code_action_accept {
                                     self.accept_code_action().await;
+                                }
+                                if trigger_ws_symbol {
+                                    self.editor.open_workspace_symbols();
+                                }
+                                if trigger_ws_confirm {
+                                    self.jump_to_workspace_symbol().await;
+                                }
+                                // Send workspace symbol request if query changed
+                                if self.editor.workspace_symbol_needs_request {
+                                    self.editor.workspace_symbol_needs_request = false;
+                                    self.request_workspace_symbols().await;
                                 }
 
                                 // Handle deferred actions
@@ -394,6 +407,17 @@ impl App {
                     return;
                 }
 
+                // Handle workspace symbol response
+                if Some(id) == self.editor.pending_workspace_symbol_id {
+                    self.editor.pending_workspace_symbol_id = None;
+                    if let Some(result) = result {
+                        let symbols = lsp::parse_workspace_symbols(&result);
+                        self.editor.workspace_symbol_results = symbols;
+                        self.editor.workspace_symbol_index = 0;
+                    }
+                    return;
+                }
+
                 // Handle rename response
                 if Some(id) == self.editor.pending_rename_id {
                     self.editor.pending_rename_id = None;
@@ -507,6 +531,48 @@ impl App {
             let character = self.editor.cursor.col as u32;
             if let Ok(id) = lsp.rename(uri, line, character, new_name).await {
                 self.editor.pending_rename_id = Some(id);
+            }
+        }
+    }
+
+    async fn request_workspace_symbols(&mut self) {
+        if let Some(lsp) = &mut self.lsp_client {
+            if !lsp.initialized {
+                return;
+            }
+            let query = self.editor.workspace_symbol_query.clone();
+            if let Ok(id) = lsp.workspace_symbol(&query).await {
+                self.editor.pending_workspace_symbol_id = Some(id);
+            }
+        }
+    }
+
+    async fn jump_to_workspace_symbol(&mut self) {
+        if let Some(sym) = self.editor.workspace_symbol_selected() {
+            self.editor.workspace_symbol_cancel();
+            self.editor.push_jump();
+            let current_uri = self.file_uri.as_deref().unwrap_or("");
+            if sym.uri == current_uri {
+                self.editor.cursor.row = sym.start_line as usize;
+                self.editor.cursor.col = sym.start_col as usize;
+                self.editor.clamp_cursor();
+                self.editor.scroll();
+            } else if let Some(path) = lsp::uri_to_path(&sym.uri) {
+                let target_line = sym.start_line;
+                let target_col = sym.start_col;
+                self.open_file(&path).await;
+                self.editor.cursor.row = target_line as usize;
+                self.editor.cursor.col = target_col as usize;
+                self.editor.clamp_cursor();
+                self.editor.scroll();
+            } else {
+                let name = sym.uri.rsplit('/').next().unwrap_or(&sym.uri);
+                self.editor.status_message = Some(format!(
+                    "Symbol in {}:{}:{}",
+                    name,
+                    sym.start_line + 1,
+                    sym.start_col + 1
+                ));
             }
         }
     }
