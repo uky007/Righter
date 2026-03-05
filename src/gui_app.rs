@@ -11,6 +11,54 @@ use crate::input::keymap;
 use crate::key::{KeyCode, KeyInput};
 use crate::lsp::{self, LspClient, LspMessage};
 
+/// Search macOS font directories for a font file matching the given name.
+fn find_font_file(name: &str) -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let dirs = [
+        format!("{home}/Library/Fonts"),
+        "/Library/Fonts".to_string(),
+        "/System/Library/Fonts".to_string(),
+        "/System/Library/Fonts/Supplemental".to_string(),
+    ];
+    let name_lower = name.to_lowercase();
+    for dir in &dirs {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let fname = entry.file_name().to_string_lossy().to_lowercase();
+                if fname.contains(&name_lower)
+                    && (fname.ends_with(".ttf") || fname.ends_with(".otf"))
+                {
+                    return Some(entry.path());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Register a custom font as the primary Monospace font.
+fn setup_custom_font(ctx: &egui::Context, font_path: &std::path::Path) -> Result<(), String> {
+    let font_data = std::fs::read(font_path)
+        .map_err(|e| format!("Failed to read font: {e}"))?;
+
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "custom_mono".to_owned(),
+        egui::FontData::from_owned(font_data).into(),
+    );
+    fonts.families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .insert(0, "custom_mono".to_owned());
+    fonts.families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .push("custom_mono".to_owned());
+
+    ctx.set_fonts(fonts);
+    Ok(())
+}
+
 pub struct GuiApp {
     editor: Editor,
     runtime: tokio::runtime::Runtime,
@@ -24,7 +72,7 @@ pub struct GuiApp {
 }
 
 impl GuiApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>, path: Option<String>, config_result: ConfigLoadResult) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, path: Option<String>, config_result: ConfigLoadResult) -> Self {
         let document = match path {
             Some(ref p) => Document::open(p).unwrap_or_else(|_| Document::new_empty()),
             None => Document::new_empty(),
@@ -48,6 +96,20 @@ impl GuiApp {
             last_notified_version: 0,
             last_pane_rects: Vec::new(),
         };
+
+        // Apply custom font if configured
+        if let Some(ref font_name) = app.editor.config.gui_font_family {
+            match find_font_file(font_name) {
+                Some(path) => {
+                    if let Err(e) = setup_custom_font(&cc.egui_ctx, &path) {
+                        app.editor.status_message = Some(e);
+                    }
+                }
+                None => {
+                    app.editor.status_message = Some(format!("Font not found: {font_name}"));
+                }
+            }
+        }
 
         // Start LSP
         if let Some(ref p) = path {
@@ -884,6 +946,31 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle runtime font family change
+        if self.editor.font_family_changed {
+            self.editor.font_family_changed = false;
+            match &self.editor.config.gui_font_family {
+                Some(font_name) => {
+                    match find_font_file(font_name) {
+                        Some(path) => {
+                            if let Err(e) = setup_custom_font(ctx, &path) {
+                                self.editor.status_message = Some(e);
+                            }
+                        }
+                        None => {
+                            ctx.set_fonts(egui::FontDefinitions::default());
+                            self.editor.status_message =
+                                Some(format!("Font not found: {font_name} (reset to default)"));
+                            self.editor.config.gui_font_family = None;
+                        }
+                    }
+                }
+                None => {
+                    ctx.set_fonts(egui::FontDefinitions::default());
+                }
+            }
+        }
+
         // Process pending LSP messages
         self.process_lsp_messages();
 

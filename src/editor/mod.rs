@@ -196,6 +196,7 @@ pub struct Editor {
     pub pane_layout: PaneNode,
     pub next_pane_id: usize,
     pub editor_area: AreaRect,
+    pub font_family_changed: bool,
 }
 
 impl Editor {
@@ -280,6 +281,7 @@ impl Editor {
             pane_layout: PaneNode::Leaf(0),
             next_pane_id: 1,
             editor_area: AreaRect::default(),
+            font_family_changed: false,
         }
     }
 
@@ -3724,6 +3726,18 @@ impl Editor {
                     Err(_) => {
                         self.status_message = Some(format!("Invalid font size: {val}"));
                     }
+                }
+            }
+            other if other.starts_with("set font=") => {
+                let name = other["set font=".len()..].trim();
+                if name.is_empty() {
+                    self.config.gui_font_family = None;
+                    self.font_family_changed = true;
+                    self.status_message = Some("font: default".to_string());
+                } else {
+                    self.config.gui_font_family = Some(name.to_string());
+                    self.font_family_changed = true;
+                    self.status_message = Some(format!("font: {name}"));
                 }
             }
             other if other.starts_with("set scrolloff=") => {

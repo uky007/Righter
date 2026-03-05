@@ -5,6 +5,7 @@ pub struct Config {
     pub scroll_off: usize,
     pub wrap: bool,
     pub gui_font_size: f32,
+    pub gui_font_family: Option<String>,
 }
 
 impl Default for Config {
@@ -14,6 +15,7 @@ impl Default for Config {
             scroll_off: 5,
             wrap: false,
             gui_font_size: 14.0,
+            gui_font_family: None,
         }
     }
 }
@@ -29,6 +31,7 @@ struct ConfigFile {
     scroll_off: Option<usize>,
     wrap: Option<bool>,
     font_size: Option<f32>,
+    font_family: Option<String>,
 }
 
 impl Config {
@@ -77,6 +80,7 @@ impl Config {
                 scroll_off: file.scroll_off.unwrap_or(defaults.scroll_off),
                 wrap: file.wrap.unwrap_or(defaults.wrap),
                 gui_font_size: file.font_size.unwrap_or(defaults.gui_font_size),
+                gui_font_family: file.font_family,
             },
             warning: None,
         }
