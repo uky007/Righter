@@ -3,9 +3,11 @@ name = "righter"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "A Vim-like text editor written in Rust with TUI and GUI frontends, featuring rust-analyzer integration"
+description = "A lightweight, memory-safe code editor built in Rust for Rust developers. Language support: Rust only."
 repository = "https://github.com/uky007/Righter"
 homepage = "https://github.com/uky007/Righter"
+keywords = ["editor", "vim", "tui", "gui", "rust"]
+categories = ["command-line-utilities", "text-editors"]
 
 [features]
 default = ["tui"]
