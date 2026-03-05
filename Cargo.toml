@@ -3,6 +3,9 @@ name = "righter"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "A Vim-like text editor written in Rust with TUI and GUI frontends, featuring rust-analyzer integration"
+repository = "https://github.com/uky007/Righter"
+homepage = "https://github.com/uky007/Righter"
 
 [features]
 default = ["tui"]
@@ -44,6 +47,10 @@ unicode-width = "0.2"
 
 # Regex
 regex = "1"
+
+[lib]
+name = "righter"
+path = "src/lib.rs"
 
 [[bin]]
 name = "righter"

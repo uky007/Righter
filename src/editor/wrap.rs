@@ -125,7 +125,7 @@ pub fn wrap_pos_to_char(line: RopeSlice, segment: usize, target_col: u16, text_w
                 if cur_segment == segment {
                     seg_start_char = i;
                     col = w;
-                    if 0 >= target_col {
+                    if target_col == 0 {
                         return i;
                     }
                 }
@@ -137,7 +137,7 @@ pub fn wrap_pos_to_char(line: RopeSlice, segment: usize, target_col: u16, text_w
                 if cur_segment == segment {
                     seg_start_char = i;
                     col = w;
-                    if 0 >= target_col {
+                    if target_col == 0 {
                         return i;
                     }
                 }

@@ -138,11 +138,10 @@ impl GuiApp {
                 // Spawn a task to bridge async LSP messages to sync channel
                 self.runtime.spawn(async move {
                     while let Some(event) = event_rx.recv().await {
-                        if let crate::lsp::AppEvent::Lsp(msg) = event {
-                            if tx.send(msg).is_err() {
+                        if let crate::lsp::AppEvent::Lsp(msg) = event
+                            && tx.send(msg).is_err() {
                                 break;
                             }
-                        }
                     }
                 });
             }
@@ -319,11 +318,10 @@ impl GuiApp {
             }
 
             LspMessage::ServerRequest { id, method, .. } => {
-                if let Some(lsp) = &mut self.lsp_client {
-                    if method == "window/workDoneProgress/create" || method == "client/registerCapability" {
+                if let Some(lsp) = &mut self.lsp_client
+                    && (method == "window/workDoneProgress/create" || method == "client/registerCapability") {
                         let _ = self.runtime.block_on(lsp.respond(&id, serde_json::Value::Null));
                     }
-                }
             }
         }
     }
@@ -777,27 +775,24 @@ impl GuiApp {
             None => return,
         };
         let mut text_edits: Vec<lsp::LspTextEdit> = Vec::new();
-        if let Some(changes) = edit.get("changes").and_then(|c| c.as_object()) {
-            if let Some(file_edits) = changes.get(&file_uri).and_then(|e| e.as_array()) {
+        if let Some(changes) = edit.get("changes").and_then(|c| c.as_object())
+            && let Some(file_edits) = changes.get(&file_uri).and_then(|e| e.as_array()) {
                 for e in file_edits {
                     if let Some(te) = lsp::parse_text_edit(e) { text_edits.push(te); }
                 }
             }
-        }
-        if text_edits.is_empty() {
-            if let Some(doc_changes) = edit.get("documentChanges").and_then(|c| c.as_array()) {
+        if text_edits.is_empty()
+            && let Some(doc_changes) = edit.get("documentChanges").and_then(|c| c.as_array()) {
                 for dc in doc_changes {
                     let uri = dc.get("textDocument").and_then(|td| td.get("uri")).and_then(|u| u.as_str());
-                    if uri == Some(&file_uri) {
-                        if let Some(edit_arr) = dc.get("edits").and_then(|e| e.as_array()) {
+                    if uri == Some(&file_uri)
+                        && let Some(edit_arr) = dc.get("edits").and_then(|e| e.as_array()) {
                             for e in edit_arr {
                                 if let Some(te) = lsp::parse_text_edit(e) { text_edits.push(te); }
                             }
                         }
-                    }
                 }
             }
-        }
         if text_edits.is_empty() { return; }
         self.editor.history.save(&self.editor.document.rope, self.editor.cursor);
         text_edits.sort_by(|a, b| b.start_line.cmp(&a.start_line).then(b.start_col.cmp(&a.start_col)));
@@ -849,26 +844,24 @@ impl GuiApp {
     }
 
     fn sync_file_uri(&mut self) {
-        if let (Some(lsp), Some(old_uri)) = (&mut self.lsp_client, &self.file_uri) {
-            if lsp.initialized {
+        if let (Some(lsp), Some(old_uri)) = (&mut self.lsp_client, &self.file_uri)
+            && lsp.initialized {
                 let _ = self.runtime.block_on(lsp.send_notification(
                     "textDocument/didClose",
                     serde_json::json!({"textDocument": {"uri": old_uri}}),
                 ));
             }
-        }
         // Reset version tracking for the new file
         self.last_notified_version = self.editor.document.version;
         if let Some(path) = &self.editor.document.path {
-            if let Some(lsp) = &mut self.lsp_client {
-                if lsp.initialized {
+            if let Some(lsp) = &mut self.lsp_client
+                && lsp.initialized {
                     let uri = lsp::path_to_uri(path);
                     let text = self.editor.document.rope.to_string();
                     let version = self.editor.document.version;
                     let _ = self.runtime.block_on(lsp.did_open(&uri, &text, version));
                     self.file_uri = Some(uri);
                 }
-            }
         } else {
             self.file_uri = None;
         }
@@ -894,15 +887,14 @@ impl GuiApp {
                 self.editor.status_message = Some(format!("\"{}\"", self.editor.document.file_name()));
                 // Reset version tracking for the new file
                 self.last_notified_version = self.editor.document.version;
-                if let Some(lsp) = &mut self.lsp_client {
-                    if lsp.initialized {
+                if let Some(lsp) = &mut self.lsp_client
+                    && lsp.initialized {
                         let uri = lsp::path_to_uri(&full_path);
                         let text = self.editor.document.rope.to_string();
                         let version = self.editor.document.version;
                         let _ = self.runtime.block_on(lsp.did_open(&uri, &text, version));
                         self.file_uri = Some(uri);
                     }
-                }
             }
             Err(e) => {
                 self.editor.status_message = Some(format!("Error opening file: {e}"));
@@ -935,11 +927,10 @@ impl GuiApp {
             if matches!(name_str.as_ref(), "target" | "node_modules" | "build" | "dist" | "__pycache__") { continue; }
             if path.is_dir() {
                 Self::walk_dir(root, &path, out);
-            } else if path.is_file() {
-                if let Ok(rel) = path.strip_prefix(root) {
+            } else if path.is_file()
+                && let Ok(rel) = path.strip_prefix(root) {
                     out.push(rel.to_string_lossy().to_string());
                 }
-            }
         }
     }
 }
@@ -1033,11 +1024,9 @@ impl eframe::App for GuiApp {
             if pane_id == self.editor.active_pane_id {
                 self.editor.view.width = editor_width;
                 self.editor.view.height = editor_height;
-            } else {
-                if let Some(pane) = self.editor.panes.iter_mut().find(|p| p.id == pane_id) {
-                    pane.view.width = editor_width;
-                    pane.view.height = editor_height;
-                }
+            } else if let Some(pane) = self.editor.panes.iter_mut().find(|p| p.id == pane_id) {
+                pane.view.width = editor_width;
+                pane.view.height = editor_height;
             }
         }
 

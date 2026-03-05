@@ -263,6 +263,7 @@ impl PaneNode {
     }
 
     /// Collect vertical separator positions for rendering.
+    #[allow(dead_code)]
     pub fn separators(&self, area: AreaRect) -> Vec<(u16, u16, u16)> {
         let mut result = Vec::new();
         self.collect_separators(area, &mut result);

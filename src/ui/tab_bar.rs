@@ -31,7 +31,7 @@ impl Widget for TabBar<'_> {
         }
 
         let mut x = area.x;
-        for (_i, (name, modified, current)) in info.iter().enumerate() {
+        for (name, modified, current) in info.iter() {
             let mod_mark = if *modified { " +" } else { "" };
             let label = format!(" {}{} ", name, mod_mark);
             let style = if *current {

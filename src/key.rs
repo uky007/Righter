@@ -21,6 +21,7 @@ pub enum KeyCode {
 }
 
 #[cfg(feature = "tui")]
+#[allow(dead_code)]
 impl KeyInput {
     pub fn from_crossterm(key: crossterm::event::KeyEvent) -> Option<Self> {
         use crossterm::event::{KeyCode as CK, KeyModifiers};

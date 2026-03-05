@@ -184,6 +184,7 @@ pub enum Command {
     DecrementNumber,
 
     // Phase 10: Named registers
+    #[allow(dead_code)]
     SelectRegister(char),
 
     // Phase 10: Macro recording
@@ -193,6 +194,7 @@ pub enum Command {
     PlayLastMacro,
 
     // Phase 10: LSP formatting
+    #[allow(dead_code)]
     FormatDocument,
 
     // Phase 11: Diagnostic navigation
@@ -232,9 +234,9 @@ pub enum Command {
     PaneClose,
 
     // Command mode
-    CommandInput(char),
-    CommandBackspace,
-    CommandExecute,
-    CommandHistoryPrev,
-    CommandHistoryNext,
+    CmdInput(char),
+    CmdBackspace,
+    CmdExecute,
+    CmdHistoryPrev,
+    CmdHistoryNext,
 }

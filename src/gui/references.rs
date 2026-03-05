@@ -32,7 +32,7 @@ pub fn draw_references(
     painter.text(
         Pos2::new(popup_rect.min.x + 8.0, popup_rect.min.y + 2.0),
         egui::Align2::LEFT_TOP,
-        &format!("References ({})", editor.references.len()),
+        format!("References ({})", editor.references.len()),
         font.clone(),
         Color32::from_rgb(97, 175, 239),
     );

@@ -1,5 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Mode {
+    #[default]
     Normal,
     Insert,
     Visual,
@@ -14,8 +16,3 @@ impl Mode {
     }
 }
 
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::Normal
-    }
-}

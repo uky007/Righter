@@ -278,6 +278,7 @@ fn is_selected_pos(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_char(
     painter: &egui::Painter,
     ch: char,
@@ -353,6 +354,7 @@ fn draw_block_cursor(painter: &egui::Painter, x: f32, y: f32, char_width: f32, l
     painter.rect_filled(rect, 0.0, Color32::WHITE);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_gutter_line(
     painter: &egui::Painter,
     data: &PaneRenderData,

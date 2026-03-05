@@ -68,13 +68,11 @@ impl App {
             loop {
                 match reader.next().await {
                     Some(Ok(Event::Key(key))) => {
-                        if key.kind == KeyEventKind::Press {
-                            if let Some(ki) = KeyInput::from_crossterm(key) {
-                                if tx.send(AppEvent::Key(ki)).is_err() {
+                        if key.kind == KeyEventKind::Press
+                            && let Some(ki) = KeyInput::from_crossterm(key)
+                                && tx.send(AppEvent::Key(ki)).is_err() {
                                     break;
                                 }
-                            }
-                        }
                     }
                     Some(Ok(Event::Resize(w, h))) => {
                         if tx.send(AppEvent::Resize(w, h)).is_err() {
@@ -274,8 +272,8 @@ impl App {
         match msg {
             LspMessage::Response { id, result, error } => {
                 // Handle initialize response
-                if let Some(lsp) = &mut self.lsp_client {
-                    if id == lsp.initialize_id && !lsp.initialized {
+                if let Some(lsp) = &mut self.lsp_client
+                    && id == lsp.initialize_id && !lsp.initialized {
                         if error.is_some() {
                             self.editor.status_message =
                                 Some("LSP: initialize failed".to_string());
@@ -295,7 +293,6 @@ impl App {
                         self.editor.status_message = Some("LSP: ready".to_string());
                         return;
                     }
-                }
 
                 // Handle completion response
                 if Some(id) == self.editor.pending_completion_id {
@@ -444,13 +441,12 @@ impl App {
 
             LspMessage::ServerRequest { id, method, .. } => {
                 // Respond to server requests (e.g., window/workDoneProgress/create)
-                if let Some(lsp) = &mut self.lsp_client {
-                    if method == "window/workDoneProgress/create"
-                        || method == "client/registerCapability"
+                if let Some(lsp) = &mut self.lsp_client
+                    && (method == "window/workDoneProgress/create"
+                        || method == "client/registerCapability")
                     {
                         let _ = lsp.respond(&id, serde_json::Value::Null).await;
                     }
-                }
             }
         }
     }
@@ -605,9 +601,9 @@ impl App {
         }
 
         // Execute command if present
-        if let Some(ref command) = action.command {
-            if let Some(lsp) = &mut self.lsp_client {
-                if lsp.initialized {
+        if let Some(ref command) = action.command
+            && let Some(lsp) = &mut self.lsp_client
+                && lsp.initialized {
                     let cmd_str = command
                         .get("command")
                         .and_then(|c| c.as_str())
@@ -626,8 +622,6 @@ impl App {
                         )
                         .await;
                 }
-            }
-        }
 
         self.editor.status_message = Some(format!("Applied: {}", action.title));
         self.notify_lsp_change().await;
@@ -642,35 +636,32 @@ impl App {
         // Collect edits from "changes" or "documentChanges"
         let mut text_edits: Vec<lsp::LspTextEdit> = Vec::new();
 
-        if let Some(changes) = edit.get("changes").and_then(|c| c.as_object()) {
-            if let Some(file_edits) = changes.get(&file_uri).and_then(|e| e.as_array()) {
+        if let Some(changes) = edit.get("changes").and_then(|c| c.as_object())
+            && let Some(file_edits) = changes.get(&file_uri).and_then(|e| e.as_array()) {
                 for e in file_edits {
                     if let Some(te) = lsp::parse_text_edit(e) {
                         text_edits.push(te);
                     }
                 }
             }
-        }
 
-        if text_edits.is_empty() {
-            if let Some(doc_changes) = edit.get("documentChanges").and_then(|c| c.as_array()) {
+        if text_edits.is_empty()
+            && let Some(doc_changes) = edit.get("documentChanges").and_then(|c| c.as_array()) {
                 for dc in doc_changes {
                     let uri = dc
                         .get("textDocument")
                         .and_then(|td| td.get("uri"))
                         .and_then(|u| u.as_str());
-                    if uri == Some(&file_uri) {
-                        if let Some(edit_arr) = dc.get("edits").and_then(|e| e.as_array()) {
+                    if uri == Some(&file_uri)
+                        && let Some(edit_arr) = dc.get("edits").and_then(|e| e.as_array()) {
                             for e in edit_arr {
                                 if let Some(te) = lsp::parse_text_edit(e) {
                                     text_edits.push(te);
                                 }
                             }
                         }
-                    }
                 }
             }
-        }
 
         if text_edits.is_empty() {
             return;
@@ -883,18 +874,17 @@ impl App {
 
             if path.is_dir() {
                 Self::walk_dir(root, &path, out);
-            } else if path.is_file() {
-                if let Ok(rel) = path.strip_prefix(root) {
+            } else if path.is_file()
+                && let Ok(rel) = path.strip_prefix(root) {
                     out.push(rel.to_string_lossy().to_string());
                 }
-            }
         }
     }
 
     async fn sync_file_uri(&mut self) {
         // Close old file in LSP
-        if let (Some(lsp), Some(old_uri)) = (&mut self.lsp_client, &self.file_uri) {
-            if lsp.initialized {
+        if let (Some(lsp), Some(old_uri)) = (&mut self.lsp_client, &self.file_uri)
+            && lsp.initialized {
                 let _ = lsp
                     .send_notification(
                         "textDocument/didClose",
@@ -904,22 +894,20 @@ impl App {
                     )
                     .await;
             }
-        }
 
         // Reset version tracking for the new file
         self.last_notified_version = self.editor.document.version;
 
         // Open new file in LSP
         if let Some(path) = &self.editor.document.path {
-            if let Some(lsp) = &mut self.lsp_client {
-                if lsp.initialized {
+            if let Some(lsp) = &mut self.lsp_client
+                && lsp.initialized {
                     let uri = lsp::path_to_uri(path);
                     let text = self.editor.document.rope.to_string();
                     let version = self.editor.document.version;
                     let _ = lsp.did_open(&uri, &text, version).await;
                     self.file_uri = Some(uri);
                 }
-            }
         } else {
             self.file_uri = None;
         }
@@ -944,8 +932,8 @@ impl App {
         }
 
         // Close old file in LSP
-        if let (Some(lsp), Some(old_uri)) = (&mut self.lsp_client, &self.file_uri) {
-            if lsp.initialized {
+        if let (Some(lsp), Some(old_uri)) = (&mut self.lsp_client, &self.file_uri)
+            && lsp.initialized {
                 let _ = lsp
                     .send_notification(
                         "textDocument/didClose",
@@ -955,7 +943,6 @@ impl App {
                     )
                     .await;
             }
-        }
 
         // Open new document as a new buffer
         match Document::open(&full_path.to_string_lossy()) {
@@ -968,15 +955,14 @@ impl App {
                 self.last_notified_version = self.editor.document.version;
 
                 // Open in LSP
-                if let Some(lsp) = &mut self.lsp_client {
-                    if lsp.initialized {
+                if let Some(lsp) = &mut self.lsp_client
+                    && lsp.initialized {
                         let uri = lsp::path_to_uri(&full_path);
                         let text = self.editor.document.rope.to_string();
                         let version = self.editor.document.version;
                         let _ = lsp.did_open(&uri, &text, version).await;
                         self.file_uri = Some(uri);
                     }
-                }
             }
             Err(e) => {
                 self.editor.status_message = Some(format!("Error opening file: {e}"));

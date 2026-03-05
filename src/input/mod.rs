@@ -236,11 +236,11 @@ pub fn execute(editor: &mut Editor, cmd: Command) -> Option<DeferredAction> {
         Command::PaneClose => return editor.close_pane(),
 
         // Command mode
-        Command::CommandInput(ch) => editor.command_input(ch),
-        Command::CommandBackspace => editor.command_backspace(),
-        Command::CommandExecute => return editor.command_execute(),
-        Command::CommandHistoryPrev => editor.command_history_prev(),
-        Command::CommandHistoryNext => editor.command_history_next(),
+        Command::CmdInput(ch) => editor.command_input(ch),
+        Command::CmdBackspace => editor.command_backspace(),
+        Command::CmdExecute => return editor.command_execute(),
+        Command::CmdHistoryPrev => editor.command_history_prev(),
+        Command::CmdHistoryNext => editor.command_history_next(),
     }
     None
 }

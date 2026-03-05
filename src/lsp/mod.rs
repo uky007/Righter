@@ -12,6 +12,7 @@ use tokio::sync::mpsc;
 // ── Message types ──────────────────────────────────────────────────
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum LspMessage {
     Response {
         id: i64,
@@ -72,6 +73,7 @@ pub struct LspDiagnostic {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LspCompletionItem {
     pub label: String,
     pub detail: Option<String>,
@@ -80,6 +82,7 @@ pub struct LspCompletionItem {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LspLocation {
     pub uri: String,
     pub start_line: u32,
@@ -89,6 +92,7 @@ pub struct LspLocation {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LspCodeAction {
     pub title: String,
     pub kind: Option<String>,
@@ -106,6 +110,7 @@ pub struct LspSymbolInfo {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LspWorkspaceEdit {
     pub uri: String,
     pub edits: Vec<LspTextEdit>,
@@ -123,6 +128,7 @@ pub struct LspTextEdit {
 // ── AppEvent ───────────────────────────────────────────────────────
 
 /// Unified event type for the main loop.
+#[allow(dead_code)]
 pub enum AppEvent {
     Key(crate::key::KeyInput),
     Resize(u16, u16),
@@ -158,16 +164,11 @@ impl LspClient {
         // Spawn background reader task
         tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
-            loop {
-                match transport::read_message(&mut reader).await {
-                    Ok(raw) => {
-                        if let Some(msg) = LspMessage::from_value(raw) {
-                            if event_tx.send(AppEvent::Lsp(msg)).is_err() {
-                                break;
-                            }
-                        }
-                    }
-                    Err(_) => break,
+            while let Ok(raw) = transport::read_message(&mut reader).await {
+                if let Some(msg) = LspMessage::from_value(raw)
+                    && event_tx.send(AppEvent::Lsp(msg)).is_err()
+                {
+                    break;
                 }
             }
         });
@@ -416,6 +417,7 @@ impl LspClient {
         .await
     }
 
+    #[allow(dead_code)]
     pub async fn shutdown(&mut self) -> Result<()> {
         let _ = self.send_request("shutdown", Value::Null).await;
         let _ = self.send_notification("exit", Value::Null).await;
@@ -451,8 +453,8 @@ pub fn uri_to_path(uri: &str) -> Option<String> {
     let bytes = encoded.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(val) = u8::from_str_radix(
+        if bytes[i] == b'%' && i + 2 < bytes.len()
+            && let Ok(val) = u8::from_str_radix(
                 std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
                 16,
             ) {
@@ -460,7 +462,6 @@ pub fn uri_to_path(uri: &str) -> Option<String> {
                 i += 3;
                 continue;
             }
-        }
         decoded.push(bytes[i]);
         i += 1;
     }
@@ -551,11 +552,10 @@ pub fn parse_goto_definition(result: &Value) -> Vec<LspLocation> {
                 out.push(l);
             }
         }
-    } else if result.is_object() {
-        if let Some(l) = parse_location(result) {
+    } else if result.is_object()
+        && let Some(l) = parse_location(result) {
             out.push(l);
         }
-    }
 
     out
 }
@@ -626,36 +626,33 @@ pub fn parse_rename_edits(result: &Value, file_uri: &str) -> Vec<LspTextEdit> {
     let mut edits = Vec::new();
 
     // Try "changes" field first
-    if let Some(changes) = result.get("changes").and_then(|c| c.as_object()) {
-        if let Some(file_edits) = changes.get(file_uri).and_then(|e| e.as_array()) {
+    if let Some(changes) = result.get("changes").and_then(|c| c.as_object())
+        && let Some(file_edits) = changes.get(file_uri).and_then(|e| e.as_array()) {
             for edit in file_edits {
                 if let Some(te) = parse_text_edit(edit) {
                     edits.push(te);
                 }
             }
         }
-    }
 
     // Try "documentChanges" field
-    if edits.is_empty() {
-        if let Some(doc_changes) = result.get("documentChanges").and_then(|c| c.as_array()) {
+    if edits.is_empty()
+        && let Some(doc_changes) = result.get("documentChanges").and_then(|c| c.as_array()) {
             for dc in doc_changes {
                 let uri = dc
                     .get("textDocument")
                     .and_then(|td| td.get("uri"))
                     .and_then(|u| u.as_str());
-                if uri == Some(file_uri) {
-                    if let Some(edit_arr) = dc.get("edits").and_then(|e| e.as_array()) {
+                if uri == Some(file_uri)
+                    && let Some(edit_arr) = dc.get("edits").and_then(|e| e.as_array()) {
                         for edit in edit_arr {
                             if let Some(te) = parse_text_edit(edit) {
                                 edits.push(te);
                             }
                         }
                     }
-                }
             }
         }
-    }
 
     // Sort edits in reverse order (bottom-to-top, right-to-left) for safe application
     edits.sort_by(|a, b| {

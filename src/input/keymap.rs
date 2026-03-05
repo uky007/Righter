@@ -265,16 +265,16 @@ fn handle_pending(editor: &mut Editor, key: KeyInput) -> Option<Command> {
     let pending = editor.pending_keys.clone();
     editor.pending_keys.clear();
 
-    match pending.as_slice() {
+    match *pending.as_slice() {
         // --- Register prefix ---
-        &['"'] => {
+        ['"'] => {
             editor.selected_register = Some(ch);
             None
         }
 
         // --- Macro ---
-        &['q'] => Some(Command::StartMacro(ch)),
-        &['@'] => {
+        ['q'] => Some(Command::StartMacro(ch)),
+        ['@'] => {
             if ch == '@' {
                 Some(Command::PlayLastMacro)
             } else {
@@ -283,7 +283,7 @@ fn handle_pending(editor: &mut Editor, key: KeyInput) -> Option<Command> {
         }
 
         // --- Operators: d, c, y ---
-        &['d'] => match ch {
+        ['d'] => match ch {
             'd' => Some(Command::DeleteLine),
             'w' => Some(Command::DeleteMotion(Motion::WordForward)),
             'e' => Some(Command::DeleteMotion(Motion::WordEnd)),
@@ -303,14 +303,14 @@ fn handle_pending(editor: &mut Editor, key: KeyInput) -> Option<Command> {
             }
             _ => None,
         },
-        &['d', 'i'] => Some(Command::DeleteMotion(Motion::Inner(ch))),
-        &['d', 'a'] => Some(Command::DeleteMotion(Motion::Around(ch))),
-        &['d', 'f'] => Some(Command::DeleteMotion(Motion::FindForward(ch))),
-        &['d', 'F'] => Some(Command::DeleteMotion(Motion::FindBackward(ch))),
-        &['d', 't'] => Some(Command::DeleteMotion(Motion::TillForward(ch))),
-        &['d', 'T'] => Some(Command::DeleteMotion(Motion::TillBackward(ch))),
+        ['d', 'i'] => Some(Command::DeleteMotion(Motion::Inner(ch))),
+        ['d', 'a'] => Some(Command::DeleteMotion(Motion::Around(ch))),
+        ['d', 'f'] => Some(Command::DeleteMotion(Motion::FindForward(ch))),
+        ['d', 'F'] => Some(Command::DeleteMotion(Motion::FindBackward(ch))),
+        ['d', 't'] => Some(Command::DeleteMotion(Motion::TillForward(ch))),
+        ['d', 'T'] => Some(Command::DeleteMotion(Motion::TillBackward(ch))),
 
-        &['c'] => match ch {
+        ['c'] => match ch {
             'c' => Some(Command::ChangeMotion(Motion::Line)),
             'w' => Some(Command::ChangeMotion(Motion::WordForward)),
             'e' => Some(Command::ChangeMotion(Motion::WordEnd)),
@@ -330,14 +330,14 @@ fn handle_pending(editor: &mut Editor, key: KeyInput) -> Option<Command> {
             }
             _ => None,
         },
-        &['c', 'i'] => Some(Command::ChangeMotion(Motion::Inner(ch))),
-        &['c', 'a'] => Some(Command::ChangeMotion(Motion::Around(ch))),
-        &['c', 'f'] => Some(Command::ChangeMotion(Motion::FindForward(ch))),
-        &['c', 'F'] => Some(Command::ChangeMotion(Motion::FindBackward(ch))),
-        &['c', 't'] => Some(Command::ChangeMotion(Motion::TillForward(ch))),
-        &['c', 'T'] => Some(Command::ChangeMotion(Motion::TillBackward(ch))),
+        ['c', 'i'] => Some(Command::ChangeMotion(Motion::Inner(ch))),
+        ['c', 'a'] => Some(Command::ChangeMotion(Motion::Around(ch))),
+        ['c', 'f'] => Some(Command::ChangeMotion(Motion::FindForward(ch))),
+        ['c', 'F'] => Some(Command::ChangeMotion(Motion::FindBackward(ch))),
+        ['c', 't'] => Some(Command::ChangeMotion(Motion::TillForward(ch))),
+        ['c', 'T'] => Some(Command::ChangeMotion(Motion::TillBackward(ch))),
 
-        &['y'] => match ch {
+        ['y'] => match ch {
             'y' => Some(Command::YankLine),
             'w' => Some(Command::YankMotion(Motion::WordForward)),
             'e' => Some(Command::YankMotion(Motion::WordEnd)),
@@ -357,11 +357,11 @@ fn handle_pending(editor: &mut Editor, key: KeyInput) -> Option<Command> {
             }
             _ => None,
         },
-        &['y', 'i'] => Some(Command::YankMotion(Motion::Inner(ch))),
-        &['y', 'a'] => Some(Command::YankMotion(Motion::Around(ch))),
+        ['y', 'i'] => Some(Command::YankMotion(Motion::Inner(ch))),
+        ['y', 'a'] => Some(Command::YankMotion(Motion::Around(ch))),
 
         // --- g-prefix ---
-        &['g'] => match ch {
+        ['g'] => match ch {
             'd' => Some(Command::GotoDefinition),
             'r' => Some(Command::FindReferences),
             'g' => Some(Command::GotoTop),
@@ -381,47 +381,47 @@ fn handle_pending(editor: &mut Editor, key: KeyInput) -> Option<Command> {
         },
 
         // --- Case change: gu{motion}, gU{motion}, g~{motion} ---
-        &['g', op @ ('u' | 'U' | '~')] => {
+        ['g', op @ ('u' | 'U' | '~')] => {
             map_case_motion(editor, op, ch)
         }
-        &['g', 'u', 'i'] => Some(Command::CaseChange(CaseOp::Lower, Motion::Inner(ch))),
-        &['g', 'u', 'a'] => Some(Command::CaseChange(CaseOp::Lower, Motion::Around(ch))),
-        &['g', 'U', 'i'] => Some(Command::CaseChange(CaseOp::Upper, Motion::Inner(ch))),
-        &['g', 'U', 'a'] => Some(Command::CaseChange(CaseOp::Upper, Motion::Around(ch))),
-        &['g', '~', 'i'] => Some(Command::CaseChange(CaseOp::Toggle, Motion::Inner(ch))),
-        &['g', '~', 'a'] => Some(Command::CaseChange(CaseOp::Toggle, Motion::Around(ch))),
+        ['g', 'u', 'i'] => Some(Command::CaseChange(CaseOp::Lower, Motion::Inner(ch))),
+        ['g', 'u', 'a'] => Some(Command::CaseChange(CaseOp::Lower, Motion::Around(ch))),
+        ['g', 'U', 'i'] => Some(Command::CaseChange(CaseOp::Upper, Motion::Inner(ch))),
+        ['g', 'U', 'a'] => Some(Command::CaseChange(CaseOp::Upper, Motion::Around(ch))),
+        ['g', '~', 'i'] => Some(Command::CaseChange(CaseOp::Toggle, Motion::Inner(ch))),
+        ['g', '~', 'a'] => Some(Command::CaseChange(CaseOp::Toggle, Motion::Around(ch))),
 
         // --- Indent/dedent ---
-        &['>'] => match ch {
+        ['>'] => match ch {
             '>' => Some(Command::IndentLine),
             _ => None,
         },
-        &['<'] => match ch {
+        ['<'] => match ch {
             '<' => Some(Command::DedentLine),
             _ => None,
         },
 
         // --- Find/till character ---
-        &['f'] => Some(Command::FindCharForward(ch)),
-        &['F'] => Some(Command::FindCharBackward(ch)),
-        &['t'] => Some(Command::TillCharForward(ch)),
-        &['T'] => Some(Command::TillCharBackward(ch)),
+        ['f'] => Some(Command::FindCharForward(ch)),
+        ['F'] => Some(Command::FindCharBackward(ch)),
+        ['t'] => Some(Command::TillCharForward(ch)),
+        ['T'] => Some(Command::TillCharBackward(ch)),
 
         // --- Replace character ---
-        &['r'] => Some(Command::ReplaceChar(ch)),
+        ['r'] => Some(Command::ReplaceChar(ch)),
 
         // --- Diagnostic navigation ---
-        &[']'] => match ch {
+        [']'] => match ch {
             'd' => Some(Command::DiagnosticNext),
             _ => None,
         },
-        &['['] => match ch {
+        ['['] => match ch {
             'd' => Some(Command::DiagnosticPrev),
             _ => None,
         },
 
         // --- Window split (Ctrl-W prefix) ---
-        &['W'] => match ch {
+        ['W'] => match ch {
             'v' => Some(Command::SplitVertical),
             's' => Some(Command::SplitHorizontal),
             'h' => Some(Command::PaneLeft),
@@ -434,7 +434,7 @@ fn handle_pending(editor: &mut Editor, key: KeyInput) -> Option<Command> {
         },
 
         // --- Scroll positioning ---
-        &['z'] => match ch {
+        ['z'] => match ch {
             'z' => Some(Command::ScrollCenter),
             't' => Some(Command::ScrollTop),
             'b' => Some(Command::ScrollBottom),
@@ -564,11 +564,11 @@ fn map_insert(editor: &Editor, key: KeyInput) -> Option<Command> {
 fn map_command(key: KeyInput) -> Option<Command> {
     match key.code {
         KeyCode::Esc => Some(Command::ExitToNormalMode),
-        KeyCode::Enter => Some(Command::CommandExecute),
-        KeyCode::Backspace => Some(Command::CommandBackspace),
-        KeyCode::Up => Some(Command::CommandHistoryPrev),
-        KeyCode::Down => Some(Command::CommandHistoryNext),
-        KeyCode::Char(ch) => Some(Command::CommandInput(ch)),
+        KeyCode::Enter => Some(Command::CmdExecute),
+        KeyCode::Backspace => Some(Command::CmdBackspace),
+        KeyCode::Up => Some(Command::CmdHistoryPrev),
+        KeyCode::Down => Some(Command::CmdHistoryNext),
+        KeyCode::Char(ch) => Some(Command::CmdInput(ch)),
         _ => None,
     }
 }

@@ -72,19 +72,12 @@ pub enum LastChange {
 }
 
 #[derive(Clone)]
+#[derive(Default)]
 pub struct Register {
     pub content: String,
     pub linewise: bool,
 }
 
-impl Default for Register {
-    fn default() -> Self {
-        Self {
-            content: String::new(),
-            linewise: false,
-        }
-    }
-}
 
 fn clipboard_get() -> Option<String> {
     std::process::Command::new("pbpaste")
@@ -199,6 +192,7 @@ pub struct Editor {
     pub font_family_changed: bool,
 }
 
+#[allow(dead_code)]
 impl Editor {
     pub fn new(document: Document) -> Self {
         Self::with_config(document, Config::default())
@@ -1052,7 +1046,7 @@ impl Editor {
             .chars()
             .take_while(|c| *c == ' ' || *c == '\t')
             .collect();
-        let trimmed_end = line.trim_end_matches(|c: char| c == '\n' || c == '\r');
+        let trimmed_end = line.trim_end_matches(['\n', '\r']);
         let extra = if trimmed_end.ends_with('{')
             || trimmed_end.ends_with('(')
             || trimmed_end.ends_with('[')
@@ -2128,11 +2122,10 @@ impl Editor {
             if first.is_none() || (row, col) < first.unwrap() {
                 first = Some((row, col));
             }
-            if row > self.cursor.row || (row == self.cursor.row && col > self.cursor.col) {
-                if best.is_none() || (row, col) < best.unwrap() {
+            if (row > self.cursor.row || (row == self.cursor.row && col > self.cursor.col))
+                && (best.is_none() || (row, col) < best.unwrap()) {
                     best = Some((row, col));
                 }
-            }
         }
         // Wrap around
         let (row, col) = best.or(first).unwrap();
@@ -2158,11 +2151,10 @@ impl Editor {
             if last.is_none() || (row, col) > last.unwrap() {
                 last = Some((row, col));
             }
-            if row < self.cursor.row || (row == self.cursor.row && col < self.cursor.col) {
-                if best.is_none() || (row, col) > best.unwrap() {
+            if (row < self.cursor.row || (row == self.cursor.row && col < self.cursor.col))
+                && (best.is_none() || (row, col) > best.unwrap()) {
                     best = Some((row, col));
                 }
-            }
         }
         // Wrap around
         let (row, col) = best.or(last).unwrap();
@@ -2354,10 +2346,10 @@ impl Editor {
         }
 
         // Check for explicit case modifiers at the end
-        let (pattern, force_case) = if query.ends_with("\\c") {
-            (&query[..query.len() - 2], Some(false)) // force case-insensitive
-        } else if query.ends_with("\\C") {
-            (&query[..query.len() - 2], Some(true)) // force case-sensitive
+        let (pattern, force_case) = if let Some(stripped) = query.strip_suffix("\\c") {
+            (stripped, Some(false)) // force case-insensitive
+        } else if let Some(stripped) = query.strip_suffix("\\C") {
+            (stripped, Some(true)) // force case-sensitive
         } else {
             (query, None)
         };
@@ -2691,7 +2683,7 @@ impl Editor {
         buf.document = std::mem::replace(&mut self.document, Document::new_empty());
         buf.cursor = self.cursor;
         buf.view = self.view;
-        buf.history = std::mem::replace(&mut self.history, History::new());
+        buf.history = std::mem::take(&mut self.history);
         buf.syntax_tree = self.syntax_tree.take();
         buf.line_styles = std::mem::take(&mut self.line_styles);
         buf.styles_offset = self.styles_offset;
@@ -2709,7 +2701,7 @@ impl Editor {
         self.document = std::mem::replace(&mut buf.document, Document::new_empty());
         self.cursor = buf.cursor;
         self.view = buf.view;
-        self.history = std::mem::replace(&mut buf.history, History::new());
+        self.history = std::mem::take(&mut buf.history);
         self.syntax_tree = buf.syntax_tree.take();
         self.line_styles = std::mem::take(&mut buf.line_styles);
         self.styles_offset = buf.styles_offset;
@@ -2858,20 +2850,18 @@ impl Editor {
     }
 
     pub fn find_buffer_by_path(&self, path: &std::path::Path) -> Option<usize> {
-        if let Some(p) = &self.document.path {
-            if p == path {
+        if let Some(p) = &self.document.path
+            && p == path {
                 return Some(self.current_buffer);
             }
-        }
         for (i, buf) in self.buffers.iter().enumerate() {
             if i == self.current_buffer {
                 continue;
             }
-            if let Some(p) = &buf.document.path {
-                if p == path {
+            if let Some(p) = &buf.document.path
+                && p == path {
                     return Some(i);
                 }
-            }
         }
         None
     }
@@ -2941,15 +2931,14 @@ impl Editor {
     /// Read from a register.
     pub fn read_register(&mut self, name: char) -> Option<Register> {
         // System clipboard
-        if name == '+' || name == '*' {
-            if let Some(text) = clipboard_get() {
+        if (name == '+' || name == '*')
+            && let Some(text) = clipboard_get() {
                 let reg = Register {
                     linewise: text.ends_with('\n'),
                     content: text,
                 };
                 return Some(reg);
             }
-        }
         self.registers.get(&name).cloned()
     }
 
@@ -3078,14 +3067,12 @@ impl Editor {
         let line_str: String = line.to_string();
         let mut num_start = None;
         let mut num_end = 0;
-        let mut negative = false;
-
         // Search from cursor position forward
         for start in self.cursor.col..line_str.len() {
             let ch = line_str.as_bytes()[start] as char;
             if ch.is_ascii_digit() {
                 // Check for negative sign
-                negative = start > 0 && line_str.as_bytes()[start - 1] == b'-';
+                let negative = start > 0 && line_str.as_bytes()[start - 1] == b'-';
                 num_start = Some(if negative { start - 1 } else { start });
                 num_end = start + 1;
                 while num_end < line_str.len()
@@ -3434,7 +3421,7 @@ impl Editor {
             pane.buffer_idx = self.current_buffer;
             pane.cursor = self.cursor;
             pane.view = self.view;
-            pane.history = std::mem::replace(&mut self.history, History::new());
+            pane.history = std::mem::take(&mut self.history);
             pane.syntax_tree = self.syntax_tree.take();
             pane.line_styles = std::mem::take(&mut self.line_styles);
             pane.styles_offset = self.styles_offset;
@@ -3465,7 +3452,7 @@ impl Editor {
             self.cursor = pane.cursor;
             self.view = pane.view;
             self.config.wrap = pane.view.wrap;
-            self.history = std::mem::replace(&mut pane.history, History::new());
+            self.history = std::mem::take(&mut pane.history);
             self.syntax_tree = pane.syntax_tree.take();
             self.line_styles = std::mem::take(&mut pane.line_styles);
             self.styles_offset = pane.styles_offset;
