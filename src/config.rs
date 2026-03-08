@@ -80,7 +80,7 @@ impl Config {
                 scroll_off: file.scroll_off.unwrap_or(defaults.scroll_off),
                 wrap: file.wrap.unwrap_or(defaults.wrap),
                 gui_font_size: file.font_size.unwrap_or(defaults.gui_font_size),
-                gui_font_family: file.font_family,
+                gui_font_family: file.font_family.or(defaults.gui_font_family),
             },
             warning: None,
         }

@@ -9,7 +9,7 @@ fn editor_with_text(text: &str) -> Editor {
     Editor::new(doc)
 }
 
-// ── Document tests ──────────────────────────────────────────────────
+// ── Document tests ───────────────────────────────────────────────────
 
 #[test]
 fn document_new_empty() {
@@ -71,7 +71,7 @@ fn document_file_name_no_path() {
     assert_eq!(doc.file_name(), "[No Name]");
 }
 
-// ── Editor cursor movement tests ────────────────────────────────────
+// ── Editor cursor movement tests ─────────────────────────────────────
 
 #[test]
 fn editor_move_right() {
@@ -137,7 +137,7 @@ fn editor_goto_top_bottom() {
     assert_eq!(editor.cursor.row, 0);
 }
 
-// ── Editor editing tests ────────────────────────────────────────────
+// ── Editor editing tests ─────────────────────────────────────────────
 
 #[test]
 fn editor_insert_char() {
@@ -228,7 +228,7 @@ fn editor_undo_redo() {
     assert!(editor.document.rope.to_string().contains('Z'));
 }
 
-// ── Mode transition tests ───────────────────────────────────────────
+// ── Mode transition tests ────────────────────────────────────────────
 
 #[test]
 fn editor_enter_insert_mode() {
@@ -254,7 +254,7 @@ fn editor_enter_command_mode() {
     assert!(editor.command_buffer.is_empty());
 }
 
-// ── Config tests ────────────────────────────────────────────────────
+// ── Config tests ─────────────────────────────────────────────────────
 
 #[test]
 fn config_default_values() {
@@ -309,7 +309,26 @@ fn config_load_font_family() {
     let _ = std::fs::remove_file(&path);
 }
 
-// ── Word movement tests ─────────────────────────────────────────────
+#[test]
+fn config_load_partial_json_preserves_default_font_family() {
+    let dir = std::env::temp_dir().join("righter_test_config4");
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("partial_with_defaults.json");
+    std::fs::write(&path, r#"{"scroll_off": 10}"#).unwrap();
+
+    let result = Config::load_from_path(&path);
+
+    assert!(result.warning.is_none());
+    assert_eq!(result.config.scroll_off, 10);
+    assert_eq!(
+        result.config.gui_font_family,
+        Config::default().gui_font_family
+    );
+
+    let _ = std::fs::remove_file(&path);
+}
+
+// ── Word movement tests ──────────────────────────────────────────────
 
 #[test]
 fn editor_move_word_forward() {
